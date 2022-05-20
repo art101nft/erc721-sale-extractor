@@ -40,7 +40,7 @@ const readFile = promisify(fs.readFile);
 console.log(`opening database at ${process.env.WORK_DIRECTORY + process.env.DATABASE_FILE}`);
 let db = new Database(process.env.WORK_DIRECTORY + process.env.DATABASE_FILE);
 
-async function work(contractAddress:string, isERC1155:boolean) {
+async function work(contractAddress:string, isERC1155:boolean, startBlock:number) {
   console.log(`Starting work for contract ${contractAddress} (is ERC1155: ${isERC1155})`);
   await sleep(5);
   let abi;
@@ -50,12 +50,14 @@ async function work(contractAddress:string, isERC1155:boolean) {
     fs.unlinkSync(lastFile);
   }
   if (isERC1155) {
+    console.log('Using ERC-1155 ABI');
     return false;
     abi = await readFile(process.env.ERC1155_ABI);
   } else {
+    console.log('Using ERC-721 ABI');
     abi = await readFile(process.env.ERC721_ABI);
   }
-  let last = retrieveCurrentBlockIndex(contractAddress);
+  let last = retrieveCurrentBlockIndex(contractAddress, startBlock);
   const json = JSON.parse(abi.toString());
   // const provider = getWeb3Provider();
   console.log(`Connecting to web3 provider: ${process.env.GETH_NODE_ENDPOINT}`);
@@ -64,12 +66,14 @@ async function work(contractAddress:string, isERC1155:boolean) {
     {
       clientConfig: {
         keepalive: true,
-        keepaliveInterval: 5000,
+        keepaliveInterval: 8000,
+        maxReceivedFrameSize: 2000000, // bytes - default: 1MiB, current: 2MiB
+        maxReceivedMessageSize: 10000000, // bytes - default: 8MiB, current: 10Mib
       },
       reconnect: {
         auto: true,
-        delay: 4000, // ms
-        maxAttempts: 10,
+        delay: 8000, // ms
+        maxAttempts: 15,
         onTimeout: true,
       },
     },
@@ -95,11 +99,12 @@ async function work(contractAddress:string, isERC1155:boolean) {
       });
       console.log(`${contractAddress} - handling ${events.length} events...`);
       for (const ev of events) {
-        process.stdout.write('.');
 
+        process.stdout.write('.')
         last = ev.blockNumber;
-        console.log(`Writing last block ${last} to ${lastFile}`);
-        fs.writeFileSync(lastFile, last.toString());
+        if (fs.readFileSync(lastFile).toString() != last.toString()) {
+          fs.writeFileSync(lastFile, last.toString());
+        }
 
         const rowExists = await new Promise((resolve) => {
           db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
@@ -109,7 +114,10 @@ async function work(contractAddress:string, isERC1155:boolean) {
             resolve(row !== undefined);
           });
         });
-        if (rowExists) continue;
+        if (rowExists) {
+          console.log(`\nEvent already stored (tx: ${ev.transactionHash}, log idx: ${ev.logIndex}, contract: ${contractAddress})`);
+          continue;
+        };
 
         const tr = await web3.eth.getTransactionReceipt(ev.transactionHash);
         let saleFound = false;
@@ -153,7 +161,7 @@ async function work(contractAddress:string, isERC1155:boolean) {
             } else {
               console.log('already exist! we have to debug that!');
             }
-            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed an opensea sale for token #${tokenId} to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
+            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed an opensea sale for token #${tokenId} to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}\n`);
           } else if (l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
@@ -239,7 +247,7 @@ async function work(contractAddress:string, isERC1155:boolean) {
               stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'rarible');
               stmt.finalize();
             }
-            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed a rarible sale to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
+            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed a rarible sale to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}`);
             break;
           } else if (l.topics[0] === NFTX_TOPIC0
             || l.topics[0] === NFTX_ALTERNATE_TOPIC0) {
@@ -289,7 +297,7 @@ async function work(contractAddress:string, isERC1155:boolean) {
               stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'nftx');
               stmt.finalize();
             }
-            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed a nftx sale to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
+            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed a nftx sale to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}`);
             break;
           } else if (l.topics[0] === CARGO_TOPIC0) {
             // cargo sale
@@ -319,7 +327,7 @@ async function work(contractAddress:string, isERC1155:boolean) {
               stmt.finalize();
             }
 
-            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed a cargo sale to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
+            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed a cargo sale to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}`);
             break;
           }
         }
@@ -364,40 +372,19 @@ async function work(contractAddress:string, isERC1155:boolean) {
   console.log('\nended should tail now');
 }
 
-function retrieveCurrentBlockIndex(contractAddress:string):number {
+function retrieveCurrentBlockIndex(contractAddress:string, startBlock:number):number {
   let last:number = 0;
   const lastFile = `${process.env.WORK_DIRECTORY}${contractAddress}.last.txt`;
-  const startingBlock = parseInt(process.env.STARTING_BLOCK, 10);
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
   };
   // contract creation
-  if (Number.isNaN(last) || last < startingBlock) {
-    last = startingBlock
+  if (Number.isNaN(last) || last < startBlock) {
+    last = startBlock
   };
   console.log(`Found last block ${last} for ${contractAddress}`)
   return last;
 }
-
-// function getWeb3Provider() {
-//   console.log(`Connecting to web3 provider: ${process.env.GETH_NODE_ENDPOINT}`);
-//   const provider = new Web3.providers.WebsocketProvider(
-//     process.env.GETH_NODE_ENDPOINT,
-//     {
-//       clientConfig: {
-//         keepalive: true,
-//         keepaliveInterval: 5000,
-//       },
-//       reconnect: {
-//         auto: true,
-//         delay: 4000, // ms
-//         maxAttempts: 10,
-//         onTimeout: true,
-//       },
-//     },
-//   );
-//   return provider;
-// }
 
 async function createDatabaseIfNeeded() {
   const tableExists = await new Promise((resolve) => {
@@ -445,7 +432,8 @@ async function scanContractEvents() {
   const allContractsJSON = JSON.parse(allContracts.toString());
   for (let key in allContractsJSON) {
     let value = allContractsJSON[key];
-    work(value.contract_address, value.erc1155);
+    if (key != 'non-fungible-soup') continue;
+    work(value.contract_address, value.erc1155, value.start_block);
   }
 }
 
