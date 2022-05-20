@@ -1,2 +1,6 @@
 .env.local
 node_modules
+db.db
+last.txt
+lastbidsentered.txt
+lastbidswithdrawn.txt
