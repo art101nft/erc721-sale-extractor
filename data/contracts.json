@@ -1,8 +1,26 @@
-[
-  "0xdc8bEd466ee117Ebff8Ee84896d6aCd42170d4bB", # nfs
-  "0x7f81858ea3b43513adfaf0a20dc7b4c6ebe72919", # mnd
-  "0x0dD0CFeAE058610C88a87Da2D9fDa496cFadE108", # sxm
-  "0x62C1e9f6830098DFF647Ef78E1F39244258F7bF5", # bb
-  "0xc918F953E1ef2F1eD6ac6A0d2Bf711A93D20Aa2b", # nfz
-  "0xea2dc6f116a4c3d6a15f06b4e8ad582a07c3dd9c"  # bv
-]
+{
+    "non-fungible-soup": {
+        "contract_address": "0xdc8bEd466ee117Ebff8Ee84896d6aCd42170d4bB",
+        "erc115": false
+    },
+    "mondriannft": {
+        "contract_address": "0x7f81858ea3b43513adfaf0a20dc7b4c6ebe72919",
+        "erc1155": false
+    },
+    "soupxmondrian": {
+        "contract_address": "0x0dD0CFeAE058610C88a87Da2D9fDa496cFadE108",
+        "erc1155": true
+    },
+    "bauhausblocks": {
+        "contract_address": "0x62C1e9f6830098DFF647Ef78E1F39244258F7bF5",
+        "erc1155": false
+    },
+    "nftzine": {
+        "contract_address": "0xc918F953E1ef2F1eD6ac6A0d2Bf711A93D20Aa2b",
+        "erc1155": false
+    },
+    "basedvitalik": {
+        "contract_address": "0xea2dc6f116a4c3d6a15f06b4e8ad582a07c3dd9c",
+        "erc1155": false
+    }
+}
