@@ -50,11 +50,11 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
     fs.unlinkSync(lastFile);
   }
   if (isERC1155) {
-    console.log('Using ERC-1155 ABI');
+    console.log(`Using ERC-1155 ABI for contract ${contractAddress}`);
     return false;
     abi = await readFile(process.env.ERC1155_ABI);
   } else {
-    console.log('Using ERC-721 ABI');
+    console.log(`Using ERC-721 ABI for contract ${contractAddress}`);
     abi = await readFile(process.env.ERC721_ABI);
   }
   let last = retrieveCurrentBlockIndex(contractAddress, startBlock);
@@ -432,7 +432,6 @@ async function scanContractEvents() {
   const allContractsJSON = JSON.parse(allContracts.toString());
   for (let key in allContractsJSON) {
     let value = allContractsJSON[key];
-    if (key != 'non-fungible-soup') continue;
     work(value.contract_address, value.erc1155, value.start_block);
   }
 }
