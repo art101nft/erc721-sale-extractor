@@ -1,17 +1,17 @@
 {
-  "name": "phunks-web3",
+  "name": "art101-sales-scraper",
   "version": "1.0.0",
   "engines": {
     "node": "16.x"
   },
   "description": "",
-  "main": "index.js",
+  "main": "src/main.ts",
   "scripts": {
-    "serve": "node --max_old_space_size=64 --optimize_for_size -r ts-node/register server.js",
-    "worker-main": "node --max_old_space_size=128 --optimize_for_size -r ts-node/register main.ts",
-    "worker-bidsentered": "sleep 5 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register bidsentered.ts",
-    "worker-bidswithdrawn": "sleep 5 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register bidswithdrawal.ts",
-    "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 5000"    
+    "serve": "node --max_old_space_size=64 --optimize_for_size -r ts-node/register src/server.js",
+    "worker-main": "node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/main.ts",
+    "worker-bidsentered": "sleep 5 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/bidsentered.ts",
+    "worker-bidswithdrawn": "sleep 5 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/bidswithdrawal.ts",
+    "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 5000"
   },
   "author": "",
   "license": "ISC",

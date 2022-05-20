@@ -45,7 +45,7 @@ async function work() {
   if (REGENERATE_FROM_SCRATCH) {
     fs.unlinkSync(`${process.env.WORK_DIRECTORY}last.txt`);
   }
-  const abi = await readFile(process.env.TARGET_ABI_FILE);
+  const abi = await readFile(process.env.ERC721_ABI);
   let last = retrieveCurrentBlockIndex();
   const json = JSON.parse(abi.toString());
   const provider = getWeb3Provider();
@@ -148,7 +148,7 @@ async function work() {
               stmt.run('sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'looksrare');
               stmt.finalize();
             }
-            console.log(`\n${txDate.toLocaleString()} - indexed a looksrare sale for token #${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);            
+            console.log(`\n${txDate.toLocaleString()} - indexed a looksrare sale for token #${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
           } else if (l.topics[0] === PHUNK_MARKETPLACE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
@@ -383,8 +383,8 @@ async function createDatabaseIfNeeded() {
       console.log('create table');
       db.run(
         `CREATE TABLE events (
-          event_type text, from_wallet text, to_wallet text, 
-          token_id number, amount number, tx_date text, tx text, 
+          event_type text, from_wallet text, to_wallet text,
+          token_id number, amount number, tx_date text, tx text,
           log_index number, platform text,
           UNIQUE(tx, log_index)
         );`,
