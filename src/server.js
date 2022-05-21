@@ -79,7 +79,8 @@ app.get('/api/:contractAddress/data', (req, res) => {
 app.get('/api/:contractAddress/platforms', (req, res) => {
   const results = [];
   const stmt = db.prepare(`select platform,
-    sum(amount/1000000000000000000.0) volume
+    sum(amount/1000000000000000000.0) volume,
+    count(*) sales
     from events
     where event_type = 'sale'
     and contract = '${req.params.contractAddress}'
