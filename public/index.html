@@ -1,6 +1,6 @@
 <html>
     <head>
-        <title>Some cryptophunks NFT statistics</title>
+        <title>Art101 NFT statistics</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
             #container {
@@ -26,138 +26,167 @@
         </style>
          <link rel="preconnect" href="https://fonts.googleapis.com">
          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-         <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet"> 
+         <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
     </head>
     <body>
-        <h1>Some cryptophunks NFT statistics</h1>
-        <p>I had some fun with CryptoPhunks NFT datas during their hackaton, I designed a pipeline to gather datas 
-            from this banned collection, this website is a sample that uses the API created to access the datas
-            scrapped by this pipeline. Raw datas are extracted directly from the blockchain, in a decentralized manner, 
-            the source code is available here: <br/>
-            <a href="https://github.com/tat2bu/erc721-sale-extractor" target="_blank">https://github.com/tat2bu/erc721-sale-extractor</a>.
-        </p> 
+        <h1>Art101 NFT statistics</h1>
+        <p>This code was forked and modified from @tat2bu's original code for scanning events for the Cryptophunks project. <br/>
+          I essentially modified it to scan for multiple collections across both ERC-721 and ERC-1155 token standards. <br/>
+            <a href="https://github.com/tat2bu/erc721-sale-extractor" target="_blank">Original Source Code</a> <br/>
+            <a href="https://github.com/art101nft/erc721-sale-extractor/tree/art101" target="_blank">Modified Art101 Code</a>
+        </p>
         <div id="loading">
-            Loading, please wait, this sample is hosted on potatoes...
+            Loading, please wait...
         </div>
-        <div id="container">
-            <div>
-                <canvas id="chart"></canvas>
-            </div>
-            <div>
-                <canvas id="platform-chart"></canvas>
-            </div>
-
-        </div>
+        <div id="container"></div>
         <script>
-            let loaded = 0;
-            fetch('/api/datas').then(function(response) {
-                response.json().then(function(json) {
-                    loaded++;
-                    if (loaded == 2) {
-                        document.getElementById("container").style.visibility = "visible";
-                        document.getElementById("loading").style.display = "none";
-                    }
-                    const labels = json.map(d => d.date);
-                    const data = {
-                    labels: labels,
-                    datasets: [
-                        {
-                            type: 'line',
-                            label: 'Average price',
-                            backgroundColor: 'rgb(99, 132, 255)',
-                            borderColor: 'rgb(99, 132, 255)',
-                            data: json.map(d => d.average_price),
-                            yAxisID: 'y1',
-                        },
-                        {
-                            type: 'line',
-                            label: 'Floor price',
-                            backgroundColor: '#ccc',
-                            borderColor: '#ccc',
-                            data: json.map(d => d.floor_price),
-                            yAxisID: 'y1',
-                        },
-                        {
-                            type: 'bar',
-                            label: 'Volume',
-                            backgroundColor: 'rgb(255, 99, 132)',
-                            borderColor: 'rgb(255, 99, 132)',
-                            data: json.map(d => d.volume),
-                            yAxisID: 'y',
-                        }]
-                    };
-                    const config = {
-                        type: 'line',
-                        data: data,
-                        options: {
-                            elements: {
-                                point: {
-                                    radius: 0
-                                }
-                            },
-                            scales: {
-                                y: {
-                                    type: 'linear',
-                                    display: true,
-                                    position: 'left',
-                                },
-                                y1: {
-                                    type: 'linear',
-                                    display: true,
-                                    position: 'right',
-                                    grid: {
-                                        drawOnChartArea: false,
-                                    },
-                                },
-                            }                            
-                        }
-                    };
-                    const myChart = new Chart(
-                        document.getElementById('chart'),
-                        config
-                    );                     
-                })               
-            });
-            fetch('/api/platforms').then(function(response) {
-                response.json().then(function(json) {
-                    loaded++;
-                    if (loaded == 2) {
-                        document.getElementById("container").style.visibility = "visible";
-                        document.getElementById("loading").style.display = "none";
-                    }
+            const container = document.getElementById('container');
 
-                    const labels = json.map(d => d.platform);
-                    const total = json.map(d => d.volume).reduce((prev,next) => prev+next, 0);
-                    const data = {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Platform',
-                            data: json.map(d => d.volume),
-                            backgroundColor: ["#7463A8", "#80B7D8", "#AC39A0", "#B0C484", "#B75055", "#F12055"]
-                        }]
-                    };
-                    const config = {
-                        type: 'doughnut',
-                        data: data,
-                        options: {           
-                            plugins: {              
-                                title: {
-                                    display: true,
-                                    text: `Total volume: ${total.toFixed(2)}Ξ`
-                                },
-                                legend: {
-                                    position: 'bottom',
-                                },
-                            }            
-                        }
-                    };
-                    const myChart = new Chart(
-                        document.getElementById('platform-chart'),
-                        config
-                    );                     
-                })               
-            });            
-          </script>          
+            function shortenAddress(a) {
+              return a.slice(0, 6) + '...' + a.slice(-4)
+            }
+
+            fetch('/api/contracts').then(function(response) {
+              response.json().then(function(json) {
+                json.forEach(function(key) {
+                  console.log(key.contract)
+                  const salesId = `sales-chart-${key.contract}`;
+                  const platformId = `platform-chart-${key.contract}`;
+                  newSalesChartDiv = document.createElement('div');
+                  newSalesChart = document.createElement('canvas');
+                  newSalesChart.setAttribute('id', salesId);
+                  newSalesChartDiv.appendChild(newSalesChart);
+                  newPlatformChartDiv = document.createElement('div');
+                  newPlatformChart = document.createElement('canvas');
+                  newPlatformChart.setAttribute('id', platformId);
+                  newPlatformChartDiv.appendChild(newPlatformChart);
+                  container.appendChild(newSalesChartDiv);
+                  container.appendChild(newPlatformChartDiv);
+                  let loaded = 0;
+                  fetch(`/api/${key.contract}/data`).then(function(response) {
+                      response.json().then(function(json) {
+                          loaded++;
+                          if (loaded == 2) {
+                              document.getElementById("container").style.visibility = "visible";
+                              document.getElementById("loading").style.display = "none";
+                          }
+                          const labels = json.map(d => d.date);
+                          const data = {
+                          labels: labels,
+                          datasets: [
+                              {
+                                  type: 'line',
+                                  label: 'Average price',
+                                  backgroundColor: 'rgb(99, 132, 255)',
+                                  borderColor: 'rgb(99, 132, 255)',
+                                  data: json.map(d => d.average_price),
+                                  yAxisID: 'y1',
+                              },
+                              {
+                                  type: 'line',
+                                  label: 'Floor price',
+                                  backgroundColor: '#ccc',
+                                  borderColor: '#ccc',
+                                  data: json.map(d => d.floor_price),
+                                  yAxisID: 'y1',
+                              },
+                              {
+                                  type: 'bar',
+                                  label: 'Volume',
+                                  backgroundColor: 'rgb(255, 99, 132)',
+                                  borderColor: 'rgb(255, 99, 132)',
+                                  data: json.map(d => d.volume),
+                                  yAxisID: 'y',
+                              }]
+                          };
+                          const config = {
+                              type: 'line',
+                              data: data,
+                              options: {
+                                  elements: {
+                                      point: {
+                                          radius: 0
+                                      }
+                                  },
+                                  plugins: {
+                                      title: {
+                                      display: true,
+                                      text: `Sales for Contract ${shortenAddress(key.contract)}`,
+                                      font: {
+                                        size: '18px'
+                                      }
+                                    }
+                                  },
+                                  scales: {
+                                      y: {
+                                          type: 'linear',
+                                          display: true,
+                                          position: 'left',
+                                      },
+                                      y1: {
+                                          type: 'linear',
+                                          display: true,
+                                          position: 'right',
+                                          grid: {
+                                              drawOnChartArea: false,
+                                          },
+                                      },
+                                  }
+                              }
+                          };
+                          const myChart = new Chart(
+                              document.getElementById(salesId),
+                              config
+                          );
+                      })
+                  });
+                  fetch(`/api/${key.contract}/platforms`).then(function(response) {
+                      response.json().then(function(json) {
+                          loaded++;
+                          if (loaded == 2) {
+                              document.getElementById("container").style.visibility = "visible";
+                              document.getElementById("loading").style.display = "none";
+                          }
+
+                          const labels = json.map(d => d.platform);
+                          const total = json.map(d => d.volume).reduce((prev,next) => prev+next, 0);
+                          const data = {
+                          labels: labels,
+                          datasets: [
+                              {
+                                  label: 'Platform',
+                                  data: json.map(d => d.volume),
+                                  backgroundColor: ["#7463A8", "#80B7D8", "#AC39A0", "#B0C484", "#B75055", "#F12055"]
+                              }]
+                          };
+                          const config = {
+                              type: 'doughnut',
+                              data: data,
+                              options: {
+                                  plugins: {
+                                      title: {
+                                          display: true,
+                                          text: `Total volume contract ${shortenAddress(key.contract)}: ${total.toFixed(2)}Ξ`,
+                                          font: {
+                                            size: '18px'
+                                          }
+                                      },
+                                      legend: {
+                                          position: 'bottom',
+                                      },
+                                  }
+                              }
+                          };
+                          const myChart = new Chart(
+                              document.getElementById(platformId),
+                              config
+                          );
+                      })
+                  });
+                })
+              })
+            })
+
+          </script>
     </body>
 </html>
