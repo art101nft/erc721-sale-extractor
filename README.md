@@ -2,7 +2,7 @@
 
 This repo contains TypeScript code to scrape the Ethereum chain for sales for any number of ERC-721 or ERC-1155 compliant tokens. It was graciously developed by [@tat2bu](https://twitter.com/tat2bu) for the CryptoPhunks project and their [marketplace site](https://notlarvalabs.com/cryptophunks) and forked/modified by [@lza_menace](https://twitter.com/lza_menace) to support multiple collections.
 
-The `main.ts` script scrapes the blockchain data and extracts structured information about sales of one or more contracts as defined in [data/contracts.json](data/contracts.json) into a SQLite database. It currently supports Opensea, LooksRare, Cargo, Rarible, CryptoPhunks, and NFTX sales.
+The `main.ts` script scrapes the blockchain data and extracts structured information about sales of one or more contracts as defined in [data/contracts.json](data/contracts.json.sample) into a SQLite database. It currently supports Opensea, LooksRare, Cargo, Rarible, CryptoPhunks, and NFTX sales.
 
 The extracted data is structured the following way in the generated sqlite3 database:
 
