@@ -42,16 +42,14 @@
         <script>
             const container = document.getElementById('container');
 
-            function shortenAddress(a) {
-              return a.slice(0, 6) + '...' + a.slice(-4)
-            }
-
             fetch('/api/contracts').then(function(response) {
               response.json().then(function(json) {
-                json.forEach(function(key) {
-                  console.log(key.contract)
-                  const salesId = `sales-chart-${key.contract}`;
-                  const platformId = `platform-chart-${key.contract}`;
+                for (contract in json) {
+                  console.log(`Found contract ${contract} (${json[contract]['contract_address']})`)
+                  const contractName = contract;
+                  const contractAddress = json[contract]['contract_address'];
+                  const salesId = `sales-chart-${contractName}`;
+                  const platformId = `platform-chart-${contractName}`;
                   newSalesChartDiv = document.createElement('div');
                   newSalesChart = document.createElement('canvas');
                   newSalesChart.setAttribute('id', salesId);
@@ -63,7 +61,7 @@
                   container.appendChild(newSalesChartDiv);
                   container.appendChild(newPlatformChartDiv);
                   let loaded = 0;
-                  fetch(`/api/${key.contract}/data`).then(function(response) {
+                  fetch(`/api/${contractAddress}/data`).then(function(response) {
                       response.json().then(function(json) {
                           loaded++;
                           if (loaded == 2) {
@@ -111,7 +109,7 @@
                                   plugins: {
                                       title: {
                                       display: true,
-                                      text: `Sales for Contract ${shortenAddress(key.contract)}`,
+                                      text: `Sales for ${contractName}`,
                                       font: {
                                         size: '18px'
                                       }
@@ -140,7 +138,7 @@
                           );
                       })
                   });
-                  fetch(`/api/${key.contract}/platforms`).then(function(response) {
+                  fetch(`/api/${contractAddress}/platforms`).then(function(response) {
                       response.json().then(function(json) {
                           loaded++;
                           if (loaded == 2) {
@@ -166,7 +164,7 @@
                                   plugins: {
                                       title: {
                                           display: true,
-                                          text: `Total volume contract ${shortenAddress(key.contract)}: ${total.toFixed(2)}Ξ`,
+                                          text: `Volume for ${contractName}: ${total.toFixed(2)}Ξ`,
                                           font: {
                                             size: '18px'
                                           }
@@ -183,7 +181,7 @@
                           );
                       })
                   });
-                })
+                }
               })
             })
 
