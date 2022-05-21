@@ -44,18 +44,20 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
   console.log(`Starting work for contract ${contractAddress} (is ERC1155: ${isERC1155})`);
   await sleep(5);
   let abi;
+  let eventName;
   const lastFile = `${process.env.WORK_DIRECTORY}${contractAddress}.last.txt`;
   if (REGENERATE_FROM_SCRATCH) {
     console.log(`Regenerating ${lastFile} from beginning`);
     fs.unlinkSync(lastFile);
   }
   if (isERC1155) {
-    console.log(`Using ERC-1155 ABI for contract ${contractAddress}`);
-    return false;
     abi = await readFile(process.env.ERC1155_ABI);
+    eventName = 'TransferSingle';
+    console.log(`Using ERC-1155 ABI for contract ${contractAddress} - searching for ${eventName} events.`);
   } else {
-    console.log(`Using ERC-721 ABI for contract ${contractAddress}`);
     abi = await readFile(process.env.ERC721_ABI);
+    eventName = 'Transfer';
+    console.log(`Using ERC-721 ABI for contract ${contractAddress} - searching for ${eventName} events.`);
   }
   let last = retrieveCurrentBlockIndex(contractAddress, startBlock);
   const json = JSON.parse(abi.toString());
@@ -93,7 +95,7 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
       console.log(`\n${contractAddress} - retrieving events from block ${last} - ${blockDate.toISOString()}`);
 
       const lastRequested = last;
-      const events = await contract.getPastEvents('Transfer', {
+      const events = await contract.getPastEvents(eventName, {
         fromBlock: last,
         toBlock: last + CHUNK_SIZE, // handle blocks by chunks
       });
@@ -377,6 +379,8 @@ function retrieveCurrentBlockIndex(contractAddress:string, startBlock:number):nu
   const lastFile = `${process.env.WORK_DIRECTORY}${contractAddress}.last.txt`;
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
+  } else {
+    fs.writeFileSync(lastFile, startBlock);
   };
   // contract creation
   if (Number.isNaN(last) || last < startBlock) {
