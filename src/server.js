@@ -33,7 +33,7 @@ app.get('/api/token/:contractAddress/:tokenId/history', (req, res) => {
   const stmt = db.prepare(`select *
     from events
     where token_id = ${req.params.tokenId}
-    and contract = ${req.params.contractAddress}
+    and contract = '${req.params.contractAddress}'
     order by tx_date desc
     `);
   for (const entry of stmt.iterate()) {
