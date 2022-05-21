@@ -16,6 +16,7 @@ if (fs.existsSync('.env.local')) {
 }
 
 const db = new Database(process.env.WORK_DIRECTORY + process.env.DATABASE_FILE, { verbose: console.log });
+const contracts = JSON.parse(fs.readFileSync(process.env.TARGET_CONTRACTS).toString())
 
 app.use(express.json());
 
@@ -24,12 +25,7 @@ app.use('/', express.static('public'));
 app.use('/app', express.static('public'));
 
 app.get('/api/contracts', (req, res) => {
-  const results = [];
-  const stmt = db.prepare(`select distinct contract from events`);
-  for (const entry of stmt.iterate()) {
-    results.push(entry);
-  }
-  res.status(200).json(results)
+  res.status(200).json(contracts)
 })
 
 app.get('/api/token/:contractAddress/:tokenId/history', (req, res) => {
