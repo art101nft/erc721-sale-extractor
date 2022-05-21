@@ -362,7 +362,7 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
         // wait for new blocks
         await sleep(10000);
         latest = await web3.eth.getBlockNumber();
-        console.log('\nwaiting for new blocks, last:', last, ', latest:', latest, '...');
+        console.log('\n', contractAddress, ' - waiting for new blocks, last:', last, ', latest:', latest, '...');
       }
       if (initialLast !== last) {
         console.log('!!! last is now', last, initialLast);
