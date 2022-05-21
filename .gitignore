@@ -1,8 +1,5 @@
 .env.local
 node_modules
-db.db
-last.txt
-lastbidsentered.txt
-lastbidswithdrawn.txt
-storage/
+storage/*.txt
+storage/db.db
 data/contracts.json
