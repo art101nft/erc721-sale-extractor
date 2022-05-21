@@ -69,8 +69,8 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
       clientConfig: {
         keepalive: true,
         keepaliveInterval: 8000,
-        maxReceivedFrameSize: 2000000, // bytes - default: 1MiB, current: 2MiB
-        maxReceivedMessageSize: 10000000, // bytes - default: 8MiB, current: 10Mib
+        maxReceivedFrameSize: 3000000, // bytes - default: 1MiB, current: 3MiB
+        maxReceivedMessageSize: 20000000, // bytes - default: 8MiB, current: 20Mib
       },
       reconnect: {
         auto: true,
