@@ -1,14 +1,17 @@
-# ERC721 sales extractor
+# ERC-721/1155 Sales Extractor
 
-The `main.ts` script scrapes the blockchain datas and extract structured informations about sales of a specific contract (here, the cryptophunks) into a SQLite database. It currently supports Cargo, Rarible and NFTX sales.
+This repo contains TypeScript code to scrape the Ethereum chain for sales for any number of ERC-721 or ERC-1155 compliant tokens. It was graciously developed by [@tat2bu](https://twitter.com/tat2bu) for the CryptoPhunks project and their [marketplace site](https://notlarvalabs.com/cryptophunks) and forked/modified by [@lza_menace](https://twitter.com/lza_menace) to support multiple collections.
 
-The extracted datas are structured the following way in the generated sqlite3 database:
+The `main.ts` script scrapes the blockchain data and extracts structured information about sales of one or more contracts as defined in [data/contracts.json](data/contracts.json) into a SQLite database. It currently supports Opensea, LooksRare, Cargo, Rarible, CryptoPhunks, and NFTX sales.
+
+The extracted data is structured the following way in the generated sqlite3 database:
 
 ```
 ------------------
 events
 ------------------
-event_type TEXT
+contract    TEXT
+event_type  TEXT
 from_wallet TEXT
 to_wallet   TEXT
 token_id    NUMBER
@@ -22,25 +25,37 @@ It restarts where it stopped, if you want to start from the beginning, change th
 
 ## Setup
 
-Copy the `.env` file to `.env.local` to setup your local configuration, you'll need a geth node (infura and alchemy provide this with good free tiers). Then start the scraper using `ts-node`: `npx ts-node main.ts`, or `ts-node main.ts` or even `main.ts` depending on your system configuration.
-## Sample API
+### Secrets
 
-An example API that uses these datas is implemented in the `server.js` file, for now, it serves a single endpoint at `/api/datas` which returns the aggregated datas day by day, but new endpoints could be easily developed using the datas available in the database. You can find other endpoints by reading the `server.js` source code.
+Copy the `.env` file to `.env.local` to setup your local configuration, you'll need a geth node (Infura and Alchemy provide this with good free tiers). Then start the scraper using `ts-node`: `npx ts-node src/main.ts` or `npm run worker-main`.
 
-Also, a demo chart using these aggregated data is served by the API server at `http://localhost:3000/app`.
+### Contracts
 
-You can start it using `npm start`, that will concurrently start the scrapping processes as well as the API server.
+Copy the `data/contracts.json.sample` file to `data/contracts.json` and modify it for the contracts you want to scrape. Be sure to define if the contract is ERC-721 or ERC-1155 to use the proper ABI and event source.
+
+## API
+
+An API that serves the scraped data is implemented in the `src/server.js` file, for now, it serves a few endpoints:
+* `/api/contracts` - parses the `data/contracts.json` file to return stored contract details.
+* `/api/token/:contractAddress/:tokenId/history` - queries the SQLite database to return events for ${tokenId} in ${contractAddress} passed in the URL.
+* `/api/latest` - queries the SQLite database to return the latest event (limited to 1).
+* `/api/:contractAddress/data` - queries the SQLite database to return sales events from ${contractAddress} passed in the URL.
+* `/api/:contractAddress/platforms` - queries the SQLite database to return sales events based upon the platform where the sale took place from ${contractAddress} passed in the URL.
+
+You can start it using `npm run serve` or `npm start`, the latter of which will concurrently start the scraping processes as well as the web server.
+
+The root of the web service is a simple representation of the sales events using [chart.js](https://chartjs.org/) and the above API.
 
 ## Docker
 
-A docker image is provided and available on docker hub. You can override the `.env` environment variables to configure the container. The simplest startup options are shown below:
+A Dockerfile is provided. You can override the `.env` environment variables to configure the container. The simplest startup options are shown below:
 
 ```
-docker run -it -e WORK_DIRECTORY=/app/work/ -v /tmp/work:/app/work -p 3000:3000 phunks-event-scrapper
+docker build -t sales-events-scraper .
+docker run -it -e WORK_DIRECTORY=/app/work/ -v /tmp/work:/app/work -p 3000:3000 sales-events-scraper
 ```
 
-## Things to be implemented
+## Todo
 
-- Better code structure using callbacks, so this could be used for other purposes (like a sale bot)
+- Better code structure using callbacks, so this could be used for other purposes (like a sales bot)
 - Extract specific traits from the tokens into the database and index them.
-- Some shamy code needs to be factorized
