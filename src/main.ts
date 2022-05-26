@@ -18,7 +18,7 @@ import dotenv from 'dotenv';
 
 /// Use this if you wanna force recreation the initial database
 const REGENERATE_FROM_SCRATCH = false;
-const CHUNK_SIZE = 200; // lower this if geth node is hanging
+const CHUNK_SIZE = 300; // lower this if geth node is hanging
 const RARIBLE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
 const NFTX_TOPIC0 = '0xf7735c8cb2a65788ca663fc8415b7c6a66cd6847d58346d8334e8d52a599d3df';
 const NFTX_ALTERNATE_TOPIC0 = '0x1cdb5ee3c47e1a706ac452b89698e5e3f2ff4f835ca72dde8936d0f4fcf37d81';
@@ -28,6 +28,7 @@ const CARGO_TOPIC0 = '0x5535fa724c02f50c6fb4300412f937dbcdf655b0ebd4ecaca9a0d377
 const PHUNK_MARKETPLACE_TOPIC0 = '0x975c7be5322a86cddffed1e3e0e55471a764ac2764d25176ceb8e17feef9392c';
 const OPENSEA_SALE_TOPIC0 = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9';
 const LOOKSRARE_SALE_TOPIC0 = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
+const X2Y2_SALE_TOPIC0 = '0xe2c49856b032c255ae7e325d18109bc4e22a2804e2e49a017ec0f59f19cd447b';
 
 if (fs.existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
@@ -133,7 +134,8 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
             || l.topics[0] === CARGO_TOPIC0
             || l.topics[0] === PHUNK_MARKETPLACE_TOPIC0
             || l.topics[0] === OPENSEA_SALE_TOPIC0
-            || l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
+            || l.topics[0] === LOOKSRARE_SALE_TOPIC0
+            || l.topics[0] === X2Y2_SALE_TOPIC0) {
             saleFound = true;
           }
           if (l.topics[0] === OPENSEA_SALE_TOPIC0) {
@@ -164,6 +166,27 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
               console.log('already exist! we have to debug that!');
             }
             console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed an opensea sale for token #${tokenId} to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}\n`);
+          } else if (l.topics[0] === X2Y2_SALE_TOPIC0) {
+            const data = l.data.substring(2)
+            const dataSlices = data.match(/.{1,64}/g);
+            const amount = parseInt(dataSlices[3], 16);
+            const sourceOwner = ev.returnValues.from.toLowerCase();
+            const targetOwner = ev.returnValues.to.toLowerCase();
+            const tokenId = ev.returnValues.tokenId;
+            const rowExists = await new Promise((resolve) => {
+              db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
+                if (err) {
+                  resolve(false);
+                }
+                resolve(row !== undefined);
+              });
+            });
+            if (!rowExists) {
+              const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
+              stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'x2y2');
+              stmt.finalize();
+            }
+            console.log(`\n${contractAddress} - ${txDate.toLocaleString()} - indexed an x2y2 sale for token #${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
           } else if (l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
@@ -357,7 +380,7 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
         last += CHUNK_SIZE;
         if (last > latest) last = latest;
       }
-      
+
       while (last >= latest) {
         latest = await web3.eth.getBlockNumber();
         console.log('\n', contractAddress, ' - waiting for new blocks, last:', last, ', latest:', latest, '...');
@@ -433,7 +456,9 @@ async function scanContractEvents() {
   const allContractsJSON = JSON.parse(allContracts.toString());
   for (let key in allContractsJSON) {
     let value = allContractsJSON[key];
-    work(value.contract_address, value.erc1155, value.start_block);
+    if (key == 'basedvitalik') {
+      work(value.contract_address, value.erc1155, value.start_block);
+    }
   }
 }
 
