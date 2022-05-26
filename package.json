@@ -9,11 +9,10 @@
   "scripts": {
     "serve": "node --max_old_space_size=64 --optimize_for_size -r ts-node/register src/server.js",
     "worker-main": "node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/main.ts",
-    "worker-bidsentered": "sleep 5 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/bidsentered.ts",
-    "worker-bidswithdrawn": "sleep 5 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/bidswithdrawal.ts",
-    "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 5000"
+    "worker-events": "sleep 2 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/events.ts",
+    "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 8000"
   },
-  "author": "",
+  "author": "lza_menace",
   "license": "ISC",
   "dependencies": {
     "@types/util.promisify": "^1.0.4",
