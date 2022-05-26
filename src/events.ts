@@ -85,116 +85,69 @@ async function work(eventName:string) {
       const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
       const txBlock = await web3.eth.getBlock(ev.blockNumber);
       const txDate = new Date(parseInt(txBlock.timestamp.toString(), 10) * 1000);
-      const platform = 'art101-marketplace'
+
+      // Query data
+      let _address = ev.returnValues.collectionAddress.toLowerCase();
+      let _event = eventName.toLowerCase();
+      let _from;
+      let _to;
+      let _idx = ev.returnValues.tokenIndex;
+      let _amt;
+      let _date = txDate.toISOString();
+      let _tx = ev.transactionHash;
+      let _log = ev.logIndex;
+      let _platform = 'art101-marketplace'
+
 
       // Different SQL query based upon the event type
       console.log(`issuing SQL statement for ${eventName} event...`);
-      console.log(ev)
+      // console.log(ev)
       if (eventName == 'TokenTransfer') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          ev.returnValues.from.toLowerCase(),
-          ev.returnValues.to.toLowerCase(),
-          ev.returnValues.tokenIndex,
-          0,
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = ev.returnValues.from.toLowerCase();
+        _to = ev.returnValues.to.toLowerCase();
+        _amt = 0;
       } else if (eventName == 'TokenOffered') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          'owner',
-          ev.returnValues.toAddress.toLowerCase(),
-          ev.returnValues.tokenIndex,
-          parseFloat(new BN(ev.returnValues.minValue.toString()).toString()),
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = 'owner';
+        _to = ev.returnValues.toAddress.toLowerCase();
+        _amt = parseFloat(new BN(ev.returnValues.minValue.toString()).toString());
       } else if (eventName == 'TokenBidEntered') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          ev.returnValues.fromAddress.toLowerCase(),
-          'na',
-          ev.returnValues.tokenIndex,
-          parseFloat(new BN(ev.returnValues.value.toString()).toString()),
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = ev.returnValues.fromAddress.toLowerCase();
+        _to = 'owner';
+        _amt = parseFloat(new BN(ev.returnValues.value.toString()).toString());
       } else if (eventName == 'TokenBidWithdrawn') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          ev.returnValues.fromAddress.toLowerCase(),
-          'na',
-          ev.returnValues.tokenIndex,
-          parseFloat(new BN(ev.returnValues.value.toString()).toString()),
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = ev.returnValues.fromAddress.toLowerCase();
+        _to = 'owner';
+        _amt = parseFloat(new BN(ev.returnValues.value.toString()).toString());
       } else if (eventName == 'TokenBought') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          ev.returnValues.fromAddress.toLowerCase(),
-          ev.returnValues.toAddress.toLowerCase(),
-          ev.returnValues.tokenIndex,
-          parseFloat(new BN(ev.returnValues.value.toString()).toString()),
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = ev.returnValues.fromAddress.toLowerCase();
+        _to = ev.returnValues.toAddress.toLowerCase();
+        _amt = parseFloat(new BN(ev.returnValues.value.toString()).toString());
       } else if (eventName == 'TokenNoLongerForSale') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          'na',
-          'na',
-          ev.returnValues.tokenIndex,
-          0,
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = 'owner';
+        _to = 'owner';
+        _amt = 0;
       } else if (eventName == 'CollectionUpdated') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          'na',
-          'na',
-          0,
-          0,
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = 'owner';
+        _to = 'owner';
+        _amt = 0;
       } else if (eventName == 'CollectionDisabled') {
-        stmt.run(
-          ev.returnValues.collectionAddress,
-          eventName.toLowerCase(),
-          'na',
-          'na',
-          0,
-          0,
-          txDate.toISOString(),
-          ev.transactionHash,
-          ev.logIndex,
-          platform
-        );
+        _from = 'owner';
+        _to = 'owner';
+        _amt = 0;
       }
+
+      stmt.run(
+        _address,
+        _event,
+        _from,
+        _to,
+        _idx,
+        _amt,
+        _date,
+        _tx,
+        _log,
+        _platform
+      );
 
       // Save last block
       console.log(`${eventName} - saving block ${latest}`)
