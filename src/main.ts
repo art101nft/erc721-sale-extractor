@@ -456,9 +456,7 @@ async function scanContractEvents() {
   const allContractsJSON = JSON.parse(allContracts.toString());
   for (let key in allContractsJSON) {
     let value = allContractsJSON[key];
-    if (key == 'basedvitalik') {
-      work(value.contract_address, value.erc1155, value.start_block);
-    }
+    work(value.contract_address, value.erc1155, value.start_block);
   }
 }
 
