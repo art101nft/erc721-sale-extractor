@@ -357,15 +357,12 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
         last += CHUNK_SIZE;
         if (last > latest) last = latest;
       }
-      // console.log('\n last < latest', last, '<', latest, last < latest);
+      
       while (last >= latest) {
-        // wait for new blocks
-        await sleep(10000);
         latest = await web3.eth.getBlockNumber();
         console.log('\n', contractAddress, ' - waiting for new blocks, last:', last, ', latest:', latest, '...');
-      }
-      if (initialLast !== last) {
-        console.log('!!! last is now', last, initialLast);
+          // wait for new blocks (300 seconds)
+          await sleep(300000);
       }
     } catch (err) {
       console.log('error received, will try to continue', err);
