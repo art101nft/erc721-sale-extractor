@@ -28,6 +28,20 @@ app.get('/api/contracts', (req, res) => {
   res.status(200).json(contracts)
 })
 
+app.get('/api/:contractAddress/events', (req, res) => {
+  const results = [];
+  const stmt = db.prepare(`select *
+    from events
+    where contract = '${req.params.contractAddress}'
+    and event_type != 'sale' and event_type != 'transfer'
+    order by tx_date desc
+    `);
+  for (const entry of stmt.iterate()) {
+    results.push(entry);
+  }
+  res.status(200).json(results);
+});
+
 app.get('/api/token/:contractAddress/:tokenId/history', (req, res) => {
   const results = [];
   const stmt = db.prepare(`select *
