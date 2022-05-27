@@ -54,6 +54,32 @@ app.get('/api/:contractAddress/offers', (req, res) => {
     res.status(200).json(results);
 });
 
+app.get('/api/:contractAddress/bids', (req, res) => {
+  const results = [];
+  const stmt = db.prepare(`select *
+    from events ev
+    where contract = '${req.params.contractAddress}'
+    collate nocase
+    and event_type = 'tokenbidentered'
+    and not token_id in
+    (
+      select token_id from events
+      where event_type == 'tokenbidwithdrawn'
+      and token_id = token_id
+      and contract = '${req.params.contractAddress}'
+      collate nocase
+      and tx_date > ev.tx_date
+      order by tx_date asc
+      limit 1
+    )
+    order by tx_date desc
+    `);
+    for (const entry of stmt.iterate()) {
+      results.push(entry);
+    }
+    res.status(200).json(results);
+});
+
 app.get('/api/:contractAddress/events', (req, res) => {
   const results = [];
   const stmt = db.prepare(`select *
