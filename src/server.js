@@ -31,16 +31,20 @@ app.get('/api/contracts', (req, res) => {
 app.get('/api/:contractAddress/offers', (req, res) => {
   const results = [];
   const stmt = db.prepare(`select *
-    from events where contract = '${req.params.contractAddress}'
+    from events ev
+    where contract = '${req.params.contractAddress}'
     collate nocase
     and event_type = 'tokenoffered'
-    and tx_date
     and not token_id in
     (
       select token_id from events
       where event_type == 'tokennolongerforsale'
+      and token_id = token_id
       and contract = '${req.params.contractAddress}'
       collate nocase
+      and tx_date > ev.tx_date
+      order by tx_date asc
+      limit 1
     )
     order by tx_date desc
     `);
@@ -48,7 +52,7 @@ app.get('/api/:contractAddress/offers', (req, res) => {
       results.push(entry);
     }
     res.status(200).json(results);
-})
+});
 
 app.get('/api/:contractAddress/events', (req, res) => {
   const results = [];
