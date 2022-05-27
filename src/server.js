@@ -33,6 +33,7 @@ app.get('/api/:contractAddress/events', (req, res) => {
   const stmt = db.prepare(`select *
     from events
     where contract = '${req.params.contractAddress}'
+    collate nocase
     and event_type != 'sale' and event_type != 'transfer'
     order by tx_date desc
     `);
@@ -48,6 +49,7 @@ app.get('/api/token/:contractAddress/:tokenId/history', (req, res) => {
     from events
     where token_id = ${req.params.tokenId}
     and contract = '${req.params.contractAddress}'
+    collate nocase
     order by tx_date desc
     `);
   for (const entry of stmt.iterate()) {
@@ -74,6 +76,7 @@ app.get('/api/:contractAddress/data', (req, res) => {
         (select avg(amount/1000000000000000000.0) from (select * from events
           where event_type == 'sale'
           and contract = '${req.params.contractAddress}'
+          collate nocase
           and date(tx_date) = date(ev.tx_date)
           order by amount
           limit 10)) floor_price,
@@ -81,6 +84,7 @@ app.get('/api/:contractAddress/data', (req, res) => {
     from events ev
     where event_type == 'sale'
     and contract = '${req.params.contractAddress}'
+    collate nocase
     group by date(tx_date)
     order by date(tx_date)
     `);
@@ -98,6 +102,7 @@ app.get('/api/:contractAddress/platforms', (req, res) => {
     from events
     where event_type = 'sale'
     and contract = '${req.params.contractAddress}'
+    collate nocase
     group by platform
     order by sum(amount/1000000000000000000.0) desc
   `);
