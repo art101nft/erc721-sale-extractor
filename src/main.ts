@@ -94,6 +94,7 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
       const blockDate = new Date(parseInt(block.timestamp.toString(), 10) * 1000);
       await sleep(10);
       console.log(`\n${contractAddress} - retrieving events from block ${last} - ${blockDate.toISOString()}`);
+      fs.writeFileSync(lastFile, last.toString());
 
       const lastRequested = last;
       const events = await contract.getPastEvents(eventName, {
@@ -105,7 +106,6 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
 
         process.stdout.write('.')
         last = ev.blockNumber;
-        fs.writeFileSync(lastFile, last.toString());
 
         const rowExists = await new Promise((resolve) => {
           db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
