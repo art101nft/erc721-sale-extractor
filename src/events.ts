@@ -70,7 +70,7 @@ async function work(eventName:string) {
       last = ev.blockNumber;
 
       const rowExists = await new Promise((resolve) => {
-        db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, ev.returnValues.collectionAddress], (err, row) => {
+        db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, ev.returnValues.collectionAddress.toLowerCase()], (err, row) => {
           if (err) {
             resolve(false);
           }
@@ -78,7 +78,7 @@ async function work(eventName:string) {
         });
       });
       if (rowExists) {
-        console.log(`Event already stored (tx: ${ev.transactionHash}, log idx: ${ev.logIndex}, contract: ${ev.returnValues.collectionAddress})`);
+        console.log(`Event already stored (tx: ${ev.transactionHash}, log idx: ${ev.logIndex}, contract: ${ev.returnValues.collectionAddress.toLowerCase()})`);
         continue;
       };
 
