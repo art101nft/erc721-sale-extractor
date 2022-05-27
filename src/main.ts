@@ -18,7 +18,7 @@ import dotenv from 'dotenv';
 
 /// Use this if you wanna force recreation the initial database
 const REGENERATE_FROM_SCRATCH = false;
-const CHUNK_SIZE = 300; // lower this if geth node is hanging
+const CHUNK_SIZE = 600; // lower this if geth node is hanging
 const RARIBLE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
 const NFTX_TOPIC0 = '0xf7735c8cb2a65788ca663fc8415b7c6a66cd6847d58346d8334e8d52a599d3df';
 const NFTX_ALTERNATE_TOPIC0 = '0x1cdb5ee3c47e1a706ac452b89698e5e3f2ff4f835ca72dde8936d0f4fcf37d81';
@@ -105,9 +105,7 @@ async function work(contractAddress:string, isERC1155:boolean, startBlock:number
 
         process.stdout.write('.')
         last = ev.blockNumber;
-        if (fs.readFileSync(lastFile).toString() != last.toString()) {
-          fs.writeFileSync(lastFile, last.toString());
-        }
+        fs.writeFileSync(lastFile, last.toString());
 
         const rowExists = await new Promise((resolve) => {
           db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
