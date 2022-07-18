@@ -39,7 +39,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
   console.log(`Starting work for ${contractName} (is ERC1155: ${isERC1155})`);
   let abi;
   let eventName;
-  const lastFile = `${process.env.WORK_DIRECTORY}${contractAddress}.last.txt`;
+  const lastFile = `${process.env.WORK_DIRECTORY}${contractName}.last.txt`;
   if (REGENERATE_FROM_SCRATCH) {
     console.log(`Regenerating ${lastFile} from beginning`);
     fs.unlinkSync(lastFile);
