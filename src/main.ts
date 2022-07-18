@@ -15,23 +15,21 @@ import fs from 'fs';
 import { Database } from 'sqlite3';
 import dotenv from 'dotenv';
 
-
-/// Use this if you wanna force recreation the initial database
-const REGENERATE_FROM_SCRATCH = false;
-const CHUNK_SIZE = 800; // lower this if geth node is hanging
-const RARIBLE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
-const PHUNK_MARKETPLACE_TOPIC0 = '0x975c7be5322a86cddffed1e3e0e55471a764ac2764d25176ceb8e17feef9392c';
-const OPENSEA_SALE_TOPIC0 = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9';
-const LOOKSRARE_SALE_TOPIC0 = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
-const LOOKSRARE_LIST_TOPIC0 = '0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31';
-const X2Y2_SALE_TOPIC0 = '0xe2c49856b032c255ae7e325d18109bc4e22a2804e2e49a017ec0f59f19cd447b';
-
 if (fs.existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
 } else {
   console.warn('no .env.local find found, using default config');
   dotenv.config();
 }
+
+// Use this if you wanna force recreation the initial database
+const REGENERATE_FROM_SCRATCH = false;
+const CHUNK_SIZE = 800; // lower this if geth node is hanging
+const web3 = new Web3(getWeb3Provider());
+const RARIBLE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
+const OPENSEA_SALE_TOPIC0 = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9';
+const LOOKSRARE_SALE_TOPIC0 = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
+const X2Y2_SALE_TOPIC0 = '0xe2c49856b032c255ae7e325d18109bc4e22a2804e2e49a017ec0f59f19cd447b';
 
 const readFile = promisify(fs.readFile);
 console.log(`opening database at ${process.env.WORK_DIRECTORY + process.env.DATABASE_FILE}`);
@@ -57,26 +55,6 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
   }
   let last = retrieveCurrentBlockIndex(contractAddress, startBlock);
   const json = JSON.parse(abi.toString());
-  // const provider = getWeb3Provider();
-  console.log(`Connecting to web3 provider: ${process.env.GETH_NODE_ENDPOINT}`);
-  const provider = new Web3.providers.WebsocketProvider(
-    process.env.GETH_NODE_ENDPOINT,
-    {
-      clientConfig: {
-        keepalive: true,
-        keepaliveInterval: 8000,
-        maxReceivedFrameSize: 3000000, // bytes - default: 1MiB, current: 3MiB
-        maxReceivedMessageSize: 20000000, // bytes - default: 8MiB, current: 20Mib
-      },
-      reconnect: {
-        auto: true,
-        delay: 8000, // ms
-        maxAttempts: 15,
-        onTimeout: true,
-      },
-    },
-  );
-  const web3 = new Web3(provider);
   const contract = new web3.eth.Contract(
     json,
     contractAddress,
@@ -97,148 +75,44 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
       });
       console.log(`${contractName} - handling ${events.length} events...`);
       for (const ev of events) {
-
-        process.stdout.write('.')
         last = ev.blockNumber;
-
-        const rowExists = await new Promise((resolve) => {
-          db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-            if (err) {
-              resolve(false);
-            }
-            resolve(row !== undefined);
-          });
-        });
+        const rowExists = await checkRowExists(ev.transactionHash, ev.logIndex, contractAddress);
         if (rowExists) {
-          console.log(`\nEvent already stored (tx: ${ev.transactionHash}, log idx: ${ev.logIndex}, contract: ${contractName})`);
+          process.stdout.write('.')
           continue;
+        } else {
+          process.stdout.write('+')
         };
-
         const tr = await web3.eth.getTransactionReceipt(ev.transactionHash);
         let saleFound = false;
         const txBlock = await web3.eth.getBlock(tr.blockNumber);
         const txDate = new Date(parseInt(txBlock.timestamp.toString(), 10) * 1000);
         for (const l of tr.logs) {
-          // check matching element to get date
+          // start log loop, checking for known topics
           if (l.topics[0] === RARIBLE_TOPIC0
-            || l.topics[0] === PHUNK_MARKETPLACE_TOPIC0
             || l.topics[0] === OPENSEA_SALE_TOPIC0
             || l.topics[0] === LOOKSRARE_SALE_TOPIC0
-            || l.topics[0] === LOOKSRARE_LIST_TOPIC0
             || l.topics[0] === X2Y2_SALE_TOPIC0) {
             saleFound = true;
           }
           if (l.topics[0] === OPENSEA_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
-            const amount = parseInt(dataSlices[2], 16);
-            const tokenId = ev.returnValues.tokenId;
-            const targetOwner = ev.returnValues.to.toLowerCase();
-            const sourceOwner = ev.returnValues.from.toLowerCase();
-            /*
-            db.run('DELETE FROM events WHERE tx = ? AND log_index = ?',
-            ev.transactionHash, ev.logIndex);
-            */
-            const rowExists = await new Promise((resolve) => {
-              db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-                if (err) {
-                  resolve(false);
-                }
-                resolve(row !== undefined);
-              });
-            });
-            if (!rowExists) {
-              console.log(contractAddress, ev.transactionHash, ev.logIndex);
-              const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-              stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'opensea');
-              stmt.finalize();
-            } else {
-              console.log('already exist! we have to debug that!');
-            }
-            console.log(`\n${contractName} - ${txDate.toLocaleString()} - indexed an opensea sale for token #${tokenId} to 0x${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}\n`);
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'opensea', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, parseInt(dataSlices[2], 16), txDate);
           } else if (l.topics[0] === X2Y2_SALE_TOPIC0) {
             const data = l.data.substring(2)
             const dataSlices = data.match(/.{1,64}/g);
-            const amount = parseInt(dataSlices[3], 16);
-            const sourceOwner = ev.returnValues.from.toLowerCase();
-            const targetOwner = ev.returnValues.to.toLowerCase();
-            const tokenId = ev.returnValues.tokenId;
-            const rowExists = await new Promise((resolve) => {
-              db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-                if (err) {
-                  resolve(false);
-                }
-                resolve(row !== undefined);
-              });
-            });
-            if (!rowExists) {
-              const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-              stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'x2y2');
-              stmt.finalize();
-            }
-            console.log(`\n${contractName} - ${txDate.toLocaleString()} - indexed an x2y2 sale for token #${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
-          } else if (l.topics[0] === LOOKSRARE_LIST_TOPIC0) {
-            console.log('FOUND LOOKSRARE LISTING!!!')
-            console.log(l.data);
-            console.log('\n\n')
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'x2y2', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, parseInt(dataSlices[3], 16), txDate);
           } else if (l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
-            const amount = parseInt(dataSlices[6], 16);
-            const tokenId = ev.returnValues.tokenId;
-            const targetOwner = ev.returnValues.to.toLowerCase();
-            const sourceOwner = ev.returnValues.from.toLowerCase();
-            const rowExists = await new Promise((resolve) => {
-              db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-                if (err) {
-                  resolve(false);
-                }
-                resolve(row !== undefined);
-              });
-            });
-            if (!rowExists) {
-              const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-              stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'looksrare');
-              stmt.finalize();
-            }
-            console.log(`\n${contractName} - ${txDate.toLocaleString()} - indexed a looksrare sale for token #${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
-          } else if (l.topics[0] === PHUNK_MARKETPLACE_TOPIC0) {
-            const data = l.data.substring(2);
-            const dataSlices = data.match(/.{1,64}/g);
-            const amount = parseInt(dataSlices[0], 16);
-            const tokenId = ev.returnValues.tokenId;
-            const targetOwner = ev.returnValues.to.toLowerCase();
-            const sourceOwner = ev.returnValues.from.toLowerCase();
-
-            const rowExists = await new Promise((resolve) => {
-              db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-                if (err) {
-                  resolve(false);
-                }
-                resolve(row !== undefined);
-              });
-            });
-            if (!rowExists) {
-              const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-              stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'phunkmarket');
-              stmt.finalize();
-            }
-            console.log(`\n${contractName} - ${txDate.toLocaleString()} - indexed a phunk market place sale for token #${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}.`);
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'looksrare', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, parseInt(dataSlices[6], 16), txDate);
           } else if (l.topics[0] === RARIBLE_TOPIC0) {
-            // rarible
-            // 1 -> to
-            // 6 -> amount
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
-            const tokenId = ev.returnValues.tokenId;
-            // TODO maybe find a better way to identify the proper slice
             if (dataSlices.length < 12) {
-              // not the right data slice
               continue;
             }
-
-            const targetOwner = ev.returnValues.to.toLowerCase();
-            const sourceOwner = ev.returnValues.from.toLowerCase();
             const amount = tr.logs.filter((t) => {
               if (t.topics[0] === RARIBLE_TOPIC0) {
                 const nftData = t.data.substring(2);
@@ -252,43 +126,20 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
               const re = parseInt(nftDataSlices[6], 16);
               return re;
             }).reduce((previousValue, currentValue) => previousValue + currentValue, 0);
-
-            const rowExists = await new Promise((resolve) => {
-              db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-                if (err) {
-                  resolve(false);
-                }
-                resolve(row !== undefined);
-              });
-            });
-            if (!rowExists) {
-              const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-              stmt.run(contractAddress, 'sale', sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), ev.transactionHash, ev.logIndex, 'rarible');
-              stmt.finalize();
-            }
-            console.log(`\n${contractName} - ${txDate.toLocaleString()} - indexed a rarible sale to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${tr.transactionHash}`);
-            break;
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'rarible', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amount, txDate);
           }
-
-          debugPrint(`Found topic: ${l.topics[0]}\n\n`)
+          // any other logic during log loop
         }
 
         if (!saleFound) {
-          // no sale found, index a transfer event
-          debugPrint('FOUND TRANSFER EVENT!!!!');
-          console.log(ev.returnValues);
-          const rowExists = await new Promise((resolve) => {
-            db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [ev.transactionHash, ev.logIndex, contractAddress], (err, row) => {
-              if (err) {
-                resolve(false);
-              }
-              resolve(row !== undefined);
-            });
-          });
-          if (!rowExists) {
-            const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-            stmt.run(contractAddress, 'transfer', ev.returnValues.from, ev.returnValues.to, ev.returnValues.tokenId, 0, txDate.toISOString(), ev.transactionHash, ev.logIndex, 'unknown');
+          // no sale found, index a mint/transfer event
+          let eventName;
+          if (ev.returnValues.from.toLowerCase() == '0x0000000000000000000000000000000000000000') {
+            eventName = 'mint';
+          } else {
+            eventName = 'transfer';
           }
+          await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'mint', 'contract', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, 0, txDate);
         }
       } // end events loop
       const initialLast = last; // checking purpose
@@ -366,6 +217,52 @@ async function createDatabaseIfNeeded() {
 async function sleep(msec:number) {
   // eslint-disable-next-line no-promise-executor-return
   return new Promise((resolve) => setTimeout(resolve, msec));
+}
+
+function getWeb3Provider() {
+  console.log(`Connecting to web3 provider: ${process.env.GETH_NODE_ENDPOINT}`);
+  const provider = new Web3.providers.WebsocketProvider(
+    process.env.GETH_NODE_ENDPOINT,
+    {
+      clientConfig: {
+        keepalive: true,
+        keepaliveInterval: 8000,
+        maxReceivedFrameSize: 3000000, // bytes - default: 1MiB, current: 3MiB
+        maxReceivedMessageSize: 20000000, // bytes - default: 8MiB, current: 20Mib
+      },
+      reconnect: {
+        auto: true,
+        delay: 8000, // ms
+        maxAttempts: 15,
+        onTimeout: true,
+      },
+    },
+  );
+  return provider;
+}
+
+async function checkRowExists(txHash:string, logIndex:number, contractAddress:string) {
+  const rowExists = await new Promise((resolve) => {
+    db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [txHash, logIndex, contractAddress], (err, row) => {
+      if (err) {
+        resolve(false);
+      }
+      resolve(row !== undefined);
+    });
+  });
+  return rowExists;
+}
+
+async function writeToDatabase(txHash:string, logIndex:number, contractName:string, contractAddress:string, eventName:string, eventSource:string, sourceOwner:string, targetOwner:string, tokenId:string, amount:number, txDate:Date) {
+  const rowExists = await checkRowExists(txHash, logIndex, contractAddress);
+  if (!rowExists) {
+    const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
+    stmt.run(contractAddress, eventName, sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), txHash, logIndex, eventSource);
+    stmt.finalize();
+  } else {
+    console.log(`That row already exists`);
+  }
+  debugPrint(`\n${contractName} - ${txDate.toLocaleString()} - indexed event '${eventName}' from '${eventSource}' for token ${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${txHash}.`);
 }
 
 function debugPrint(msg: string) {
