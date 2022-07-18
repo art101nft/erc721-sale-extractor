@@ -53,7 +53,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
     eventName = 'Transfer';
     console.log(`Using ERC-721 ABI for ${contractName} - searching for ${eventName} events.`);
   }
-  let last = retrieveCurrentBlockIndex(contractAddress, startBlock);
+  let last = retrieveCurrentBlockIndex(contractName, startBlock);
   const json = JSON.parse(abi.toString());
   const contract = new web3.eth.Contract(
     json,
@@ -72,7 +72,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
         toBlock: last + CHUNK_SIZE, // handle blocks by chunks
       });
       if (events.length == 0) continue;
-      console.log(`\n${contractName} - handling ${events.length} events from blocks ${last}-${last + CHUNK_SIZE} [${blockDate.toISOString()}]`);
+      console.log(`\n${contractName} - handling ${events.length} events from block ${last} +${CHUNK_SIZE} [${blockDate.toISOString()}]`);
       for (const ev of events) {
         last = ev.blockNumber;
         // Skip tx logs if already exists in DB
@@ -161,9 +161,9 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
   console.log('\nended. should tail now');
 }
 
-function retrieveCurrentBlockIndex(contractAddress:string, startBlock:number):number {
+function retrieveCurrentBlockIndex(contractName:string, startBlock:number):number {
   let last:number = 0;
-  const lastFile = `${process.env.WORK_DIRECTORY}${contractAddress}.last.txt`;
+  const lastFile = `${process.env.WORK_DIRECTORY}${contractName}.last.txt`;
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
   } else {
@@ -173,7 +173,7 @@ function retrieveCurrentBlockIndex(contractAddress:string, startBlock:number):nu
   if (Number.isNaN(last) || last < startBlock) {
     last = startBlock
   };
-  console.log(`\nFound last block ${last} for ${contractAddress}`)
+  console.log(`\nFound last block ${last} for ${contractName}`)
   return last;
 }
 
