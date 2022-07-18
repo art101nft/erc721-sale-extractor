@@ -65,23 +65,21 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
     try {
       const block = await web3.eth.getBlock(last);
       const blockDate = new Date(parseInt(block.timestamp.toString(), 10) * 1000);
-      console.log(`\n${contractName} - retrieving events from block ${last} - ${blockDate.toISOString()}`);
       fs.writeFileSync(lastFile, last.toString());
-
       const lastRequested = last;
       const events = await contract.getPastEvents(eventName, {
         fromBlock: last,
         toBlock: last + CHUNK_SIZE, // handle blocks by chunks
       });
-      console.log(`${contractName} - handling ${events.length} events...`);
+      if (events.length == 0) continue;
+      console.log(`\n${contractName} - handling ${events.length} events from blocks ${last}-${last + CHUNK_SIZE} [${blockDate.toISOString()}]`);
       for (const ev of events) {
         last = ev.blockNumber;
+        // Skip tx logs if already exists in DB
         const rowExists = await checkRowExists(ev.transactionHash, ev.logIndex, contractAddress);
         if (rowExists) {
-          process.stdout.write('.')
-          continue;
-        } else {
-          process.stdout.write('+')
+          process.stdout.write('.');
+          continue
         };
         const tr = await web3.eth.getTransactionReceipt(ev.transactionHash);
         let saleFound = false;
@@ -139,7 +137,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
           } else {
             eventName = 'transfer';
           }
-          await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'mint', 'contract', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, 0, txDate);
+          await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, eventName, 'contract', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, 0, txDate);
         }
       } // end events loop
       const initialLast = last; // checking purpose
@@ -160,7 +158,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
       console.log('error received, will try to continue', err);
     }
   }
-  console.log('\nended should tail now');
+  console.log('\nended. should tail now');
 }
 
 function retrieveCurrentBlockIndex(contractAddress:string, startBlock:number):number {
@@ -175,7 +173,7 @@ function retrieveCurrentBlockIndex(contractAddress:string, startBlock:number):nu
   if (Number.isNaN(last) || last < startBlock) {
     last = startBlock
   };
-  console.log(`Found last block ${last} for ${contractAddress}`)
+  console.log(`\nFound last block ${last} for ${contractAddress}`)
   return last;
 }
 
@@ -256,11 +254,19 @@ async function checkRowExists(txHash:string, logIndex:number, contractAddress:st
 async function writeToDatabase(txHash:string, logIndex:number, contractName:string, contractAddress:string, eventName:string, eventSource:string, sourceOwner:string, targetOwner:string, tokenId:string, amount:number, txDate:Date) {
   const rowExists = await checkRowExists(txHash, logIndex, contractAddress);
   if (!rowExists) {
-    const stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
-    stmt.run(contractAddress, eventName, sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), txHash, logIndex, eventSource);
-    stmt.finalize();
+    let stmt;
+    try {
+      stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
+      stmt.run(contractAddress, eventName, sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), txHash, logIndex, eventSource);
+      stmt.finalize();
+      process.stdout.write('+');
+    } catch(err) {
+      console.log(`Error when writing to database: ${err}`);
+      console.log(`Query: ${stmt}`)
+    }
+
   } else {
-    console.log(`That row already exists`);
+    process.stdout.write('.');
   }
   debugPrint(`\n${contractName} - ${txDate.toLocaleString()} - indexed event '${eventName}' from '${eventSource}' for token ${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${txHash}.`);
 }
@@ -277,9 +283,7 @@ async function scanContractEvents() {
   const allContractsJSON = JSON.parse(allContracts.toString());
   for (let key in allContractsJSON) {
     let value = allContractsJSON[key];
-    if (value.scan) {
-      work(key, value.contract_address, value.erc1155, value.start_block);
-    }
+    work(key, value.contract_address, value.erc1155, value.start_block);
   }
 }
 
