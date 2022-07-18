@@ -1,5 +1,5 @@
 .env.local
 node_modules
 storage/*.txt
-storage/db.db
+storage/*.db
 data/contracts.json
