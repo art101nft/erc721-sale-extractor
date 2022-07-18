@@ -50,19 +50,19 @@ async function work(eventName:string) {
     fs.unlinkSync(lastFile);
   }
   let last = retrieveCurrentBlockIndex(lastFile);
-  console.log(`${eventName} - starting from block ${last}`);
+  console.log(`Art101 Marketplace - ${eventName} - starting from block ${last}`);
   while (last < latest) {
     const block = await web3.eth.getBlock(last);
     const blockDate = new Date(parseInt(block.timestamp.toString(), 10) * 1000);
     await sleep(200);
-    console.log(`${eventName} - retrieving events from block ${last} - ${blockDate.toISOString()}`);
     fs.writeFileSync(lastFile, last.toString());
 
     const events = await contract.getPastEvents(eventName, {
       fromBlock: last,
       toBlock: last + 500, // handle blocks by chunks
     });
-    console.log(`${eventName} - handling ${events.length} events...`);
+    if (events.length == 0) continue;
+    console.log(`\nArt101 Marketplace - ${eventName} - handling ${events.length} events from block ${last} +500 [${blockDate.toISOString()}]`);
     let lastEvent = null;
     for (const ev of events) {
       lastEvent = ev;
