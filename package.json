@@ -8,8 +8,8 @@
   "main": "src/main.ts",
   "scripts": {
     "serve": "node --max_old_space_size=64 --optimize_for_size -r ts-node/register src/server.js",
-    "worker-main": "node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/main.ts",
-    "worker-events": "sleep 2 && node --max_old_space_size=128 --optimize_for_size -r ts-node/register src/events.ts",
+    "worker-main": "node --max_old_space_size=1024 --optimize_for_size -r ts-node/register src/main.ts",
+    "worker-events": "sleep 2 && node --max_old_space_size=1024 --optimize_for_size -r ts-node/register src/events.ts",
     "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 8000"
   },
   "author": "lza_menace",
@@ -22,6 +22,7 @@
     "concurrently": "^6.5.0",
     "dotenv": "^10.0.0",
     "express": "^4.17.1",
+    "node-fetch": "^3.2.9",
     "sqlite": "^4.0.23",
     "sqlite3": "^5.0.2",
     "ts-node": "^10.4.0",

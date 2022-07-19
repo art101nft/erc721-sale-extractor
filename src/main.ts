@@ -14,6 +14,7 @@ import { promisify } from 'util';
 import fs from 'fs';
 import { Database } from 'sqlite3';
 import dotenv from 'dotenv';
+import { postDiscord } from './posting';
 
 if (fs.existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
@@ -24,9 +25,9 @@ if (fs.existsSync('.env.local')) {
 
 // Use this if you wanna force recreation the initial database
 const REGENERATE_FROM_SCRATCH = false;
-const CHUNK_SIZE = 800; // lower this if geth node is hanging
+const CHUNK_SIZE = 500; // lower this if geth node is hanging
 const web3 = new Web3(getWeb3Provider());
-const RARIBLE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
+const RARIBLE_SALE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
 const OPENSEA_SALE_TOPIC0 = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9';
 const LOOKSRARE_SALE_TOPIC0 = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
 const X2Y2_SALE_TOPIC0 = '0xe2c49856b032c255ae7e325d18109bc4e22a2804e2e49a017ec0f59f19cd447b';
@@ -39,6 +40,8 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
   console.log(`Starting work for ${contractName} (is ERC1155: ${isERC1155})`);
   let abi;
   let eventName;
+  let eventSource;
+  let amountWei;
   const lastFile = `${process.env.WORK_DIRECTORY}${contractName}.last.txt`;
   if (REGENERATE_FROM_SCRATCH) {
     console.log(`Regenerating ${lastFile} from beginning`);
@@ -72,7 +75,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
         toBlock: last + CHUNK_SIZE, // handle blocks by chunks
       });
       if (events.length == 0) continue;
-      console.log(`\n${contractName} - handling ${events.length} events from block ${last} +${CHUNK_SIZE} [${blockDate.toISOString()}]`);
+      console.log(`\n${contractName} - handling ${events.length} events from block ${last} [${blockDate.toISOString()}]`);
       for (const ev of events) {
         last = ev.blockNumber;
         // Skip tx logs if already exists in DB
@@ -87,7 +90,7 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
         const txDate = new Date(parseInt(txBlock.timestamp.toString(), 10) * 1000);
         for (const l of tr.logs) {
           // start log loop, checking for known topics
-          if (l.topics[0] === RARIBLE_TOPIC0
+          if (l.topics[0] === RARIBLE_SALE_TOPIC0
             || l.topics[0] === OPENSEA_SALE_TOPIC0
             || l.topics[0] === LOOKSRARE_SALE_TOPIC0
             || l.topics[0] === X2Y2_SALE_TOPIC0) {
@@ -96,23 +99,30 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
           if (l.topics[0] === OPENSEA_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'opensea', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, parseInt(dataSlices[2], 16), txDate);
+            eventSource = 'opensea';
+            amountWei = parseInt(dataSlices[2], 16);
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
           } else if (l.topics[0] === X2Y2_SALE_TOPIC0) {
             const data = l.data.substring(2)
             const dataSlices = data.match(/.{1,64}/g);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'x2y2', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, parseInt(dataSlices[3], 16), txDate);
+            eventSource = 'x2y2';
+            amountWei = parseInt(dataSlices[3], 16);
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
           } else if (l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'looksrare', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, parseInt(dataSlices[6], 16), txDate);
-          } else if (l.topics[0] === RARIBLE_TOPIC0) {
+            eventSource = 'looksrare';
+            amountWei = parseInt(dataSlices[6], 16);
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
+          } else if (l.topics[0] === RARIBLE_SALE_TOPIC0) {
             const data = l.data.substring(2);
             const dataSlices = data.match(/.{1,64}/g);
+            eventSource = 'rarible';
             if (dataSlices.length < 12) {
               continue;
             }
             const amount = tr.logs.filter((t) => {
-              if (t.topics[0] === RARIBLE_TOPIC0) {
+              if (t.topics[0] === RARIBLE_SALE_TOPIC0) {
                 const nftData = t.data.substring(2);
                 const nftDataSlices = nftData.match(/.{1,64}/g);
                 return nftDataSlices.length === 10 || nftDataSlices.length === 11;
@@ -124,19 +134,32 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
               const re = parseInt(nftDataSlices[6], 16);
               return re;
             }).reduce((previousValue, currentValue) => previousValue + currentValue, 0);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', 'rarible', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amount, txDate);
+            amountWei = amount;
+            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
           }
-          // any other logic during log loop
         }
 
-        if (!saleFound) {
-          // no sale found, index a mint/transfer event
-          let eventName;
-          if (ev.returnValues.from.toLowerCase() == '0x0000000000000000000000000000000000000000') {
-            eventName = 'mint';
-          } else {
-            eventName = 'transfer';
+        if (saleFound) {
+          // sale found, notify discord and twitter
+          const amountEther = web3.utils.fromWei(amountWei.toString(), 'ether');
+          try {
+            const msg = await postDiscord(
+              contractName,
+              contractAddress,
+              ev.returnValues.tokenId,
+              amountEther,
+              eventSource,
+              ev.returnValues.from.toLowerCase(),
+              ev.returnValues.to.toLowerCase()
+            )
+            console.log(`\n${msg}`)
+          } catch(err) {
+            console.log(`\n[!] Problem posting! ${err}`)
           }
+      } else {
+          // no sale found, index a mint/transfer event
+          let eventName = 'transfer';
+          if (ev.returnValues.from.toLowerCase() == '0x0000000000000000000000000000000000000000') eventName = 'mint'
           await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, eventName, 'contract', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, 0, txDate);
         }
       } // end events loop
@@ -264,7 +287,6 @@ async function writeToDatabase(txHash:string, logIndex:number, contractName:stri
       console.log(`Error when writing to database: ${err}`);
       console.log(`Query: ${stmt}`)
     }
-
   } else {
     process.stdout.write('.');
   }
