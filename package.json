@@ -5,39 +5,25 @@
     "node": "16.x"
   },
   "description": "",
-  "main": "src/main.ts",
+  "main": "src/main.js",
+  "type": "module",
   "scripts": {
-    "serve": "node --max_old_space_size=64 --optimize_for_size -r ts-node/register src/server.js",
-    "worker-main": "node --max_old_space_size=1024 --optimize_for_size -r ts-node/register src/main.ts",
-    "worker-events": "sleep 2 && node --max_old_space_size=1024 --optimize_for_size -r ts-node/register src/events.ts",
+    "serve": "node --max_old_space_size=128 --optimize_for_size src/server.js",
+    "worker-main": "node --max_old_space_size=1024 --optimize_for_size src/main.js",
+    "worker-events": "sleep 2 && node --max_old_space_size=1024 --optimize_for_size src/events.js",
     "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 8000"
   },
   "author": "lza_menace",
   "license": "ISC",
   "dependencies": {
     "@types/util.promisify": "^1.0.4",
-    "abi-decoder": "^2.4.0",
     "better-sqlite3": "^7.4.5",
     "bignumber.js": "^9.0.1",
     "concurrently": "^6.5.0",
     "dotenv": "^10.0.0",
     "express": "^4.17.1",
     "node-fetch": "^3.2.9",
-    "sqlite": "^4.0.23",
     "sqlite3": "^5.0.2",
-    "ts-node": "^10.4.0",
-    "typescript": "^4.5.3",
     "web3": "^1.6.1"
-  },
-  "devDependencies": {
-    "@types/sqlite3": "^3.1.7",
-    "@typescript-eslint/eslint-plugin": "^5.6.0",
-    "@typescript-eslint/parser": "^5.6.0",
-    "eslint": "^8.4.1",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-standard": "^16.0.3",
-    "eslint-plugin-import": "^2.25.3",
-    "eslint-plugin-node": "^11.1.0",
-    "eslint-plugin-promise": "^5.2.0"
   }
 }

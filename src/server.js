@@ -1,12 +1,8 @@
-/* eslint-disable no-console */
-/* eslint-disable no-restricted-syntax */
-const express = require('express');
-
-const app = express();
-const port = process.env.PORT || 3000;
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const dotenv = require('dotenv');
+import express from 'express';
+// const Database = require('better-sqlite3');
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import dotenv from 'dotenv';
 
 if (fs.existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
@@ -15,6 +11,8 @@ if (fs.existsSync('.env.local')) {
   dotenv.config();
 }
 
+const app = express();
+const port = process.env.PORT || 3000;
 const db = new Database(process.env.WORK_DIRECTORY + process.env.DATABASE_FILE, { verbose: console.log });
 const contracts = JSON.parse(fs.readFileSync(process.env.TARGET_CONTRACTS).toString())
 

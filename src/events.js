@@ -1,17 +1,9 @@
-#!/usr/bin/env ts-node
-/* eslint-disable no-loop-func */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable no-continue */
-/* eslint-disable no-restricted-syntax */
-/* eslint-disable no-use-before-define */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-console */
-
 import Web3 from 'web3';
 import BN from 'bignumber.js';
 import { promisify } from 'util';
 import fs from 'fs';
-import { Database } from 'sqlite3';
+import pkg from 'sqlite3';
+const { Database } = pkg;
 import dotenv from 'dotenv';
 
 if (fs.existsSync('.env.local')) {
@@ -37,9 +29,9 @@ const contractEvents = [
   'CollectionDisabled',
 ]
 
-async function work(eventName:string) {
+async function work(eventName) {
   const lastFile = process.env.WORK_DIRECTORY + `marketplace.${eventName}.last.txt`;
-  const abi = await readFile(process.env.MARKETPLACE_ABI as string);
+  const abi = await readFile(process.env.MARKETPLACE_ABI);
   const json = JSON.parse(abi.toString());
   const contract = new web3.eth.Contract(
     json,
@@ -155,7 +147,6 @@ async function work(eventName:string) {
     }
 
     // prevent an infinite loop on an empty set of block
-    // @ts-ignore: Object is possibly 'null'.
     if (lastEvent === null || last === lastEvent.blockNumber) {
       last += 200;
     }
@@ -169,8 +160,8 @@ async function work(eventName:string) {
   }
 }
 
-function retrieveCurrentBlockIndex(lastFile:string):number {
-  let last:number = 0;
+function retrieveCurrentBlockIndex(lastFile) {
+  let last = 0;
   const startBlock = Number(process.env.STARTING_BLOCK_MARKETPLACE);
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
@@ -206,8 +197,7 @@ function getWeb3Provider() {
   return provider;
 }
 
-async function sleep(msec:number) {
-  // eslint-disable-next-line no-promise-executor-return
+async function sleep(msec) {
   return new Promise((resolve) => setTimeout(resolve, msec));
 }
 

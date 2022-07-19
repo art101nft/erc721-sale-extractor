@@ -1,20 +1,11 @@
-#!/usr/bin/env ts-node
-/* eslint-disable no-shadow */
-/* eslint-disable no-loop-func */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable no-continue */
-/* eslint-disable no-restricted-syntax */
-/* eslint-disable no-use-before-define */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-console */
-
 import Web3 from 'web3';
 import BN from 'bignumber.js';
 import { promisify } from 'util';
 import fs from 'fs';
-import { Database } from 'sqlite3';
+import pkg from 'sqlite3';
+const { Database } = pkg;
 import dotenv from 'dotenv';
-import { postDiscord } from './posting';
+import { postDiscord } from './posting.js';
 
 if (fs.existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
@@ -25,7 +16,7 @@ if (fs.existsSync('.env.local')) {
 
 // Use this if you wanna force recreation the initial database
 const REGENERATE_FROM_SCRATCH = false;
-const CHUNK_SIZE = 500; // lower this if geth node is hanging
+const CHUNK_SIZE = 600; // lower this if geth node is hanging
 const web3 = new Web3(getWeb3Provider());
 const RARIBLE_SALE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
 const OPENSEA_SALE_TOPIC0 = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9';
@@ -36,7 +27,7 @@ const readFile = promisify(fs.readFile);
 console.log(`opening database at ${process.env.WORK_DIRECTORY + process.env.DATABASE_FILE}`);
 let db = new Database(process.env.WORK_DIRECTORY + process.env.DATABASE_FILE);
 
-async function work(contractName: string, contractAddress:string, isERC1155:boolean, startBlock:number) {
+async function work(contractName, contractAddress, isERC1155, startBlock) {
   console.log(`Starting work for ${contractName} (is ERC1155: ${isERC1155})`);
   let abi;
   let eventName;
@@ -143,16 +134,17 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
           // sale found, notify discord and twitter
           const amountEther = web3.utils.fromWei(amountWei.toString(), 'ether');
           try {
-            const msg = await postDiscord(
+            await postDiscord(
               contractName,
               contractAddress,
               ev.returnValues.tokenId,
               amountEther,
               eventSource,
               ev.returnValues.from.toLowerCase(),
-              ev.returnValues.to.toLowerCase()
+              ev.returnValues.to.toLowerCase(),
+              ev.transactionHash,
+              blockDate.getTime()
             )
-            console.log(`\n${msg}`)
           } catch(err) {
             console.log(`\n[!] Problem posting! ${err}`)
           }
@@ -184,8 +176,8 @@ async function work(contractName: string, contractAddress:string, isERC1155:bool
   console.log('\nended. should tail now');
 }
 
-function retrieveCurrentBlockIndex(contractName:string, startBlock:number):number {
-  let last:number = 0;
+function retrieveCurrentBlockIndex(contractName, startBlock) {
+  let last = 0;
   const lastFile = `${process.env.WORK_DIRECTORY}${contractName}.last.txt`;
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
@@ -235,7 +227,7 @@ async function createDatabaseIfNeeded() {
   }
 }
 
-async function sleep(msec:number) {
+async function sleep(msec) {
   // eslint-disable-next-line no-promise-executor-return
   return new Promise((resolve) => setTimeout(resolve, msec));
 }
@@ -262,7 +254,7 @@ function getWeb3Provider() {
   return provider;
 }
 
-async function checkRowExists(txHash:string, logIndex:number, contractAddress:string) {
+async function checkRowExists(txHash, logIndex, contractAddress) {
   const rowExists = await new Promise((resolve) => {
     db.get('SELECT * FROM events WHERE tx = ? AND log_index = ? AND contract = ?', [txHash, logIndex, contractAddress], (err, row) => {
       if (err) {
@@ -274,7 +266,7 @@ async function checkRowExists(txHash:string, logIndex:number, contractAddress:st
   return rowExists;
 }
 
-async function writeToDatabase(txHash:string, logIndex:number, contractName:string, contractAddress:string, eventName:string, eventSource:string, sourceOwner:string, targetOwner:string, tokenId:string, amount:number, txDate:Date) {
+async function writeToDatabase(txHash, logIndex, contractName, contractAddress, eventName, eventSource, sourceOwner, targetOwner, tokenId, amount, txDate) {
   const rowExists = await checkRowExists(txHash, logIndex, contractAddress);
   if (!rowExists) {
     let stmt;
@@ -293,7 +285,7 @@ async function writeToDatabase(txHash:string, logIndex:number, contractName:stri
   debugPrint(`\n${contractName} - ${txDate.toLocaleString()} - indexed event '${eventName}' from '${eventSource}' for token ${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${txHash}.`);
 }
 
-function debugPrint(msg: string) {
+function debugPrint(msg) {
   if (Number(process.env.DEBUG) === 1) {
     console.log(msg);
   }
