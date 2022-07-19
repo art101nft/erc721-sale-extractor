@@ -53,9 +53,9 @@ async function work(contractName, contractAddress, isERC1155, startBlock) {
     json,
     contractAddress,
   );
-  console.log(`${contractName} - starting from block: ${last}`);
+  console.log(`${contractName} - starting from block: ${last.toString()}`);
   let latest = await web3.eth.getBlockNumber();
-  while (last < latest) {
+  while (last < parseInt(latest)) {
     try {
       const block = await web3.eth.getBlock(last);
       const blockDate = new Date(parseInt(block.timestamp.toString(), 10) * 1000);
@@ -186,7 +186,7 @@ function retrieveCurrentBlockIndex(contractName, startBlock) {
   };
   // contract creation
   if (Number.isNaN(last) || last < startBlock) {
-    last = startBlock.toString()
+    last = startBlock
   };
   console.log(`\nFound last block ${last} for ${contractName}`)
   return last;
