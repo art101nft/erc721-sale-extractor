@@ -182,11 +182,11 @@ function retrieveCurrentBlockIndex(contractName, startBlock) {
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
   } else {
-    fs.writeFileSync(lastFile, startBlock);
+    fs.writeFileSync(lastFile, startBlock.toString());
   };
   // contract creation
   if (Number.isNaN(last) || last < startBlock) {
-    last = startBlock
+    last = startBlock.toString()
   };
   console.log(`\nFound last block ${last} for ${contractName}`)
   return last;
