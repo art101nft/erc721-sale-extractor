@@ -43,7 +43,7 @@ async function work(eventName) {
   }
   let last = retrieveCurrentBlockIndex(lastFile);
   console.log(`Art101 Marketplace - ${eventName} - starting from block ${last}`);
-  while (last < latest) {
+  while (last < parseInt(latest)) {
     const block = await web3.eth.getBlock(last);
     const blockDate = new Date(parseInt(block.timestamp.toString(), 10) * 1000);
     await sleep(200);
@@ -90,9 +90,6 @@ async function work(eventName) {
       let _log = ev.logIndex;
       let _platform = 'art101-marketplace'
 
-
-      // Different SQL query based upon the event type
-      console.log(`issuing SQL statement for ${eventName} event...`);
       // console.log(ev)
       if (eventName == 'TokenTransfer') {
         _from = ev.returnValues.from.toLowerCase();
@@ -166,7 +163,7 @@ function retrieveCurrentBlockIndex(lastFile) {
   if (fs.existsSync(lastFile)) {
     last = parseInt(fs.readFileSync(lastFile).toString(), 10);
   } else {
-    fs.writeFileSync(lastFile, startBlock);
+    fs.writeFileSync(lastFile, startBlock.toString());
   };
   // contract creation
   if (Number.isNaN(last) || last < startBlock) {
