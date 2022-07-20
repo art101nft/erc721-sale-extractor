@@ -64,8 +64,7 @@ async function work(contractName, contractAddress, isERC1155, startBlock) {
         fromBlock: last,
         toBlock: last + CHUNK_SIZE, // handle blocks by chunks
       });
-      if (events.length == 0) continue;
-      console.log(`\n${contractName} - handling ${events.length} events from block ${last} [${blockDate.toISOString()}]`);
+      if (events.length > 0) console.log(`\n${contractName} - handling ${events.length} events from block ${last} [${blockDate.toISOString()}]`);
       for (const ev of events) {
         last = ev.blockNumber;
         // Skip tx logs if already exists in DB
@@ -311,7 +310,6 @@ async function writeToDatabase(txHash, logIndex, contractName, contractAddress, 
     } catch(err) {
       console.log(`Error when writing to database: ${err}`);
       console.log(`Query: ${stmt}`)
-      throw new Error(err)
     }
   } else {
     process.stdout.write('.');
