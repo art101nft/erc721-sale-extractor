@@ -86,6 +86,8 @@ async function work(contractName, contractAddress, isERC1155, startBlock) {
         let logIndex;
         let txHash;
         for (const l of tr.logs) {
+          // Skip log if not interacting with the contract
+          if (l.address.toLowerCase() != contractAddress.toLowerCase()) continue;
           // If we have a transfer, the one after will be the sale
           if (l.topics[0] === TRANSFER_TOPIC) {
             tokenId = parseInt(l.topics[3], 16);
