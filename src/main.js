@@ -15,13 +15,14 @@ if (fs.existsSync('.env.local')) {
 }
 
 // Use this if you wanna force recreation the initial database
+const web3 = new Web3(getWeb3Provider());
 const REGENERATE_FROM_SCRATCH = false;
 const CHUNK_SIZE = 600; // lower this if geth node is hanging
-const web3 = new Web3(getWeb3Provider());
 const RARIBLE_SALE_TOPIC0 = '0xcae9d16f553e92058883de29cb3135dbc0c1e31fd7eace79fef1d80577fe482e';
 const OPENSEA_SALE_TOPIC0 = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9';
 const LOOKSRARE_SALE_TOPIC0 = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
 const X2Y2_SALE_TOPIC0 = '0xe2c49856b032c255ae7e325d18109bc4e22a2804e2e49a017ec0f59f19cd447b';
+const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 const readFile = promisify(fs.readFile);
 console.log(`opening database at ${process.env.WORK_DIRECTORY + process.env.DATABASE_FILE}`);
@@ -31,8 +32,6 @@ async function work(contractName, contractAddress, isERC1155, startBlock) {
   console.log(`Starting work for ${contractName} (is ERC1155: ${isERC1155})`);
   let abi;
   let eventName;
-  let eventSource;
-  let amountWei;
   const lastFile = `${process.env.WORK_DIRECTORY}${contractName}.last.txt`;
   if (REGENERATE_FROM_SCRATCH) {
     console.log(`Regenerating ${lastFile} from beginning`);
@@ -76,85 +75,119 @@ async function work(contractName, contractAddress, isERC1155, startBlock) {
           continue
         };
         const tr = await web3.eth.getTransactionReceipt(ev.transactionHash);
-        let saleFound = false;
         const txBlock = await web3.eth.getBlock(tr.blockNumber);
         const txDate = new Date(parseInt(txBlock.timestamp.toString(), 10) * 1000);
+        let amountWei = 0;
+        let eventType = 'transfer';
+        let eventSource = 'contract';
+        let storeEvent = false;
+        let tokenId;
+        let fromAddress;
+        let toAddress;
+        let logIndex;
+        let txHash;
         for (const l of tr.logs) {
-          // start log loop, checking for known topics
+          // If we have a transfer, the one after will be the sale
+          if (l.topics[0] === TRANSFER_TOPIC) {
+            tokenId = parseInt(l.topics[3], 16);
+            let fromAddressBytes = web3.utils.hexToBytes(l.topics[1]);
+            let toAddressBytes = web3.utils.hexToBytes(l.topics[2]);
+            fromAddress = web3.utils.bytesToHex(fromAddressBytes.slice(12));
+            toAddress = web3.utils.bytesToHex(toAddressBytes.slice(12));
+            logIndex = l.logIndex;
+            txHash = l.transactionHash;
+            storeEvent = true;
+          }
+          if (fromAddress == '0x0000000000000000000000000000000000000000') eventType = 'mint'
+          // check for known sale topics
           if (l.topics[0] === RARIBLE_SALE_TOPIC0
             || l.topics[0] === OPENSEA_SALE_TOPIC0
             || l.topics[0] === LOOKSRARE_SALE_TOPIC0
-            || l.topics[0] === X2Y2_SALE_TOPIC0) {
-            saleFound = true;
-          }
-          if (l.topics[0] === OPENSEA_SALE_TOPIC0) {
-            const data = l.data.substring(2);
-            const dataSlices = data.match(/.{1,64}/g);
-            eventSource = 'opensea';
-            amountWei = parseInt(dataSlices[2], 16);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
-          } else if (l.topics[0] === X2Y2_SALE_TOPIC0) {
-            const data = l.data.substring(2)
-            const dataSlices = data.match(/.{1,64}/g);
-            eventSource = 'x2y2';
-            amountWei = parseInt(dataSlices[3], 16);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
-          } else if (l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
-            const data = l.data.substring(2);
-            const dataSlices = data.match(/.{1,64}/g);
-            eventSource = 'looksrare';
-            amountWei = parseInt(dataSlices[6], 16);
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
-          } else if (l.topics[0] === RARIBLE_SALE_TOPIC0) {
-            const data = l.data.substring(2);
-            const dataSlices = data.match(/.{1,64}/g);
-            eventSource = 'rarible';
-            if (dataSlices.length < 12) {
-              continue;
-            }
-            const amount = tr.logs.filter((t) => {
-              if (t.topics[0] === RARIBLE_SALE_TOPIC0) {
-                const nftData = t.data.substring(2);
-                const nftDataSlices = nftData.match(/.{1,64}/g);
-                return nftDataSlices.length === 10 || nftDataSlices.length === 11;
+            || l.topics[0] === X2Y2_SALE_TOPIC0
+          ) {
+            eventType = 'sale';
+            storeEvent = true;
+            logIndex = l.logIndex;
+            if (l.topics[0] === OPENSEA_SALE_TOPIC0) {
+              const data = l.data.substring(2);
+              const dataSlices = data.match(/.{1,64}/g);
+              amountWei = parseInt(dataSlices[2], 16);
+              eventSource = 'opensea';
+            } else if (l.topics[0] === X2Y2_SALE_TOPIC0) {
+              const data = l.data.substring(2)
+              const dataSlices = data.match(/.{1,64}/g);
+              amountWei = parseInt(dataSlices[3], 16);
+              eventSource = 'x2y2';
+            } else if (l.topics[0] === LOOKSRARE_SALE_TOPIC0) {
+              const data = l.data.substring(2);
+              const dataSlices = data.match(/.{1,64}/g);
+              amountWei = parseInt(dataSlices[6], 16);
+              eventSource = 'looksrare';
+            } else if (l.topics[0] === RARIBLE_SALE_TOPIC0) {
+              const data = l.data.substring(2);
+              const dataSlices = data.match(/.{1,64}/g);
+              if (dataSlices.length < 12) {
+                continue;
               }
-              return false;
-            }).map((log) => {
-              const nftData = log.data.substring(2);
-              const nftDataSlices = nftData.match(/.{1,64}/g);
-              const re = parseInt(nftDataSlices[6], 16);
-              return re;
-            }).reduce((previousValue, currentValue) => previousValue + currentValue, 0);
-            amountWei = amount;
-            await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, 'sale', eventSource, ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, amountWei, txDate);
+              const amount = tr.logs.filter((t) => {
+                if (t.topics[0] === RARIBLE_SALE_TOPIC0) {
+                  const nftData = t.data.substring(2);
+                  const nftDataSlices = nftData.match(/.{1,64}/g);
+                  return nftDataSlices.length === 10 || nftDataSlices.length === 11;
+                }
+                return false;
+              }).map((log) => {
+                const nftData = log.data.substring(2);
+                const nftDataSlices = nftData.match(/.{1,64}/g);
+                const re = parseInt(nftDataSlices[6], 16);
+                return re;
+              }).reduce((previousValue, currentValue) => previousValue + currentValue, 0);
+              amountWei = amount;
+              eventSource = 'rarible';
+            }
+            // sale found, notify discord and twitter
+            try {
+              const amountEther = web3.utils.fromWei(amountWei.toString(), 'ether');
+              await postDiscord(
+                contractName,
+                contractAddress,
+                tokenId,
+                amountEther,
+                eventSource,
+                fromAddress,
+                toAddress,
+                txHash,
+                blockDate.getTime()
+              )
+            } catch(err) {
+              console.log(`\n[!] Problem posting! ${err}`)
+            }
           }
-        }
-
-        if (saleFound) {
-          // sale found, notify discord and twitter
-          const amountEther = web3.utils.fromWei(amountWei.toString(), 'ether');
-          try {
-            await postDiscord(
+          if (storeEvent) {
+            if (eventType == 'transfer') {
+              process.stdout.write('-');
+            } else if (eventType == 'mint') {
+              process.stdout.write('o');
+            } else if (eventType == 'sale') {
+              process.stdout.write('x');
+            }
+            await writeToDatabase(
+              txHash,
+              logIndex,
               contractName,
               contractAddress,
-              ev.returnValues.tokenId,
-              amountEther,
+              eventType,
               eventSource,
-              ev.returnValues.from.toLowerCase(),
-              ev.returnValues.to.toLowerCase(),
-              ev.transactionHash,
-              blockDate.getTime()
-            )
-          } catch(err) {
-            console.log(`\n[!] Problem posting! ${err}`)
+              fromAddress,
+              toAddress,
+              tokenId,
+              amountWei,
+              txDate
+            );
           }
-      } else {
-          // no sale found, index a mint/transfer event
-          let eventName = 'transfer';
-          if (ev.returnValues.from.toLowerCase() == '0x0000000000000000000000000000000000000000') eventName = 'mint'
-          await writeToDatabase(ev.transactionHash, ev.logIndex, contractName, contractAddress, eventName, 'contract', ev.returnValues.from.toLowerCase(), ev.returnValues.to.toLowerCase(), ev.returnValues.tokenId, 0, txDate);
         }
       } // end events loop
+
       const initialLast = last; // checking purpose
 
       // prevent an infinite loop on an empty set of block
@@ -228,7 +261,6 @@ async function createDatabaseIfNeeded() {
 }
 
 async function sleep(msec) {
-  // eslint-disable-next-line no-promise-executor-return
   return new Promise((resolve) => setTimeout(resolve, msec));
 }
 
@@ -271,6 +303,7 @@ async function writeToDatabase(txHash, logIndex, contractName, contractAddress, 
   if (!rowExists) {
     let stmt;
     try {
+      debugPrint(`\n${contractName} - ${txDate.toLocaleString()} - storing event '${eventName}' from '${sourceOwner}' to '${targetOwner}' via '${eventSource}' for token ${tokenId} for ${web3.utils.fromWei(amount.toString(), 'ether')}Ξ in tx ${txHash} log index ${logIndex}.`);
       stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
       stmt.run(contractAddress, eventName, sourceOwner, targetOwner, tokenId, parseFloat(new BN(amount.toString()).toString()), txDate.toISOString(), txHash, logIndex, eventSource);
       stmt.finalize();
@@ -278,11 +311,11 @@ async function writeToDatabase(txHash, logIndex, contractName, contractAddress, 
     } catch(err) {
       console.log(`Error when writing to database: ${err}`);
       console.log(`Query: ${stmt}`)
+      throw new Error(err)
     }
   } else {
     process.stdout.write('.');
   }
-  debugPrint(`\n${contractName} - ${txDate.toLocaleString()} - indexed event '${eventName}' from '${eventSource}' for token ${tokenId} to ${targetOwner} for ${web3.utils.fromWei(amount.toString(), 'ether')}eth in tx ${txHash}.`);
 }
 
 function debugPrint(msg) {
@@ -297,6 +330,7 @@ async function scanContractEvents() {
   const allContractsJSON = JSON.parse(allContracts.toString());
   for (let key in allContractsJSON) {
     let value = allContractsJSON[key];
+    if (!value.scan && process.env.DEBUG == 1) continue
     work(key, value.contract_address, value.erc1155, value.start_block);
   }
 }
