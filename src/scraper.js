@@ -325,7 +325,7 @@ async function writeToDatabase(_q) {
 
 
 let c = new Scrape('rmutt')
-c.scrape()
+// c.scrape()
 
 // Sample events for testing functionality and detecting sales
 // c.getSalesEvents('0x2f8961209daca23288c499449aa936b54eec5c25720b9d7499a8ee5bde7fcdc7')
@@ -333,3 +333,4 @@ c.scrape()
 // c.getSalesEvents('0x71e5135a543e17cc91992a2229ae5811461c96b84d5e2560ac8db1dd99bb17e3')
 // c.getSalesEvents('0x5dc68e0bd60fa671e7b6702002e4ce374de6a5dd49fcda00fdb45e26771bcbd9')
 // c.getSalesEvents('0x975d10cdd873ee5bb29e746c2f1f3b776078cace9c04ce419cb66949239288b5')
+c.getSalesEvents('0x8d45ed8168a740f8b182ec0dbad1c37d6c6dbd8aa865be408d865ca01fb0fa94')
