@@ -17,14 +17,17 @@ const ERC721_ABI = require('../data/erc721');
 const ERC1155_ABI = require('../data/erc1155');
 const MARKETPLACE_ABI = require('../data/marketplace');
 const SEAPORT_ABI = require('../data/seaport');
+const WYVERN_ABI = require('../data/wyvern');
 const LOOKSRARE_ABI = require('../data/looksrare');
 const WETH_ADDRESS = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const LOOKSRARE_SALE_TOPIC = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
 const SEAPORT_SALE_TOPIC = '0x9d9af8e38d66c62e2c12f0225249fd9d721c54b83f48d9352c97c6cacdcb6f31';
+const WYVERN_SALE_TOPIC = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9'
 const X2Y2_SALE_TOPIC = '0x3cbb63f144840e5b1b0a38a7c19211d2e89de4d7c5faf8b2d3c1776c302d1d33';
 const seaportInterface = new ethers.utils.Interface(SEAPORT_ABI);
 const looksrareInterface = new ethers.utils.Interface(LOOKSRARE_ABI);
+const wyvernInterface = new ethers.utils.Interface(WYVERN_ABI);
 const provider = new ethers.providers.WebSocketProvider(process.env.GETH_NODE);
 const db = new Database('./storage/sqlite.db');
 
@@ -112,7 +115,7 @@ class Scrape extends Collection {
       const tokenId = tx.args.tokenId.toString();
       const timestamp = await this.getBlockTimestamp(tx.blockNumber);
       this.writeLastBlock(tx.blockNumber);
-      let msg = `${this.contractName} - found transfer of token ${tokenId}. ${tx.transactionHash} - ${timestamp.toISOString()}`;
+      let msg = `${this.contractName} - found transfer of token ${tokenId} from ${fromAddress} to ${toAddress}. ${tx.transactionHash}:${tx.logIndex} - ${timestamp.toISOString()}`;
       console.log(msg);
       const q = {
         txHash: tx.transactionHash,
@@ -165,6 +168,19 @@ class Scrape extends Collection {
             amounts = wethOffers
           }
           amountWei = amounts.reduce((previous,current) => previous + current, BigInt(0));
+        } else if (log.topics[0].toLowerCase() === WYVERN_SALE_TOPIC.toLowerCase()) {
+          const logDescription = wyvernInterface.parseLog(log);
+          sale = true;
+          platform = 'opensea';
+          fromAddress = logDescription.args.maker.toLowerCase();
+          toAddress = logDescription.args.taker.toLowerCase();
+          amountWei = BigInt(logDescription.args.price);
+          // have to parse the tokenId from the transfer event, which will be from exactly matching criteria below
+          tokenId = receipt.logs.map(l => l.topics).filter(topics =>
+            (topics[0].toLowerCase() == TRANSFER_TOPIC.toLowerCase()) &&
+            (BigNumber.from(topics[1])._hex.toString().toLowerCase() == fromAddress) &&
+            (BigNumber.from(topics[2])._hex.toString().toLowerCase() == toAddress)
+          ).map(t => BigNumber.from(t[3]));
         } else if (log.topics[0].toLowerCase() === LOOKSRARE_SALE_TOPIC.toLowerCase()) {
           // Handle LooksRare sales
           const logDescription = looksrareInterface.parseLog(log);
@@ -191,7 +207,7 @@ class Scrape extends Collection {
         }
         if (sale) {
           amountEther = ethers.utils.formatEther(amountWei);
-          let msg = `${this.contractName} - found sale of token ${tokenId} for ${amountEther}Ξ on ${platform}. ${txHash} - ${timestamp.toISOString()}`;
+          let msg = `${this.contractName} - found sale of token ${tokenId} for ${amountEther}Ξ on ${platform}. ${txHash}:${logIndex} - ${timestamp.toISOString()}`;
           console.log(msg);
           const q = {
             txHash: txHash,
@@ -330,7 +346,7 @@ for(const key in ALL_CONTRACTS) {
 }
 
 // Testing just one collection
-// let c = new Scrape('rmutt')
+// let c = new Scrape('non-fungible-soup')
 // c.scrape()
 
 // Sample events for testing functionality and detecting sales
@@ -340,3 +356,4 @@ for(const key in ALL_CONTRACTS) {
 // c.getSalesEvents('0x5dc68e0bd60fa671e7b6702002e4ce374de6a5dd49fcda00fdb45e26771bcbd9')
 // c.getSalesEvents('0x975d10cdd873ee5bb29e746c2f1f3b776078cace9c04ce419cb66949239288b5')
 // c.getSalesEvents('0x8d45ed8168a740f8b182ec0dbad1c37d6c6dbd8aa865be408d865ca01fb0fa94')
+// c.getSalesEvents('0x27ab6f12604bf17a9e7c93bf1a7cc466d7dfd922565d267eac10879b59d5d0b5')
