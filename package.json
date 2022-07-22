@@ -6,12 +6,12 @@
   },
   "description": "",
   "main": "src/main.js",
-  "type": "module",
   "scripts": {
     "serve": "node --max_old_space_size=128 --optimize_for_size src/server.js",
     "worker-main": "node --max_old_space_size=1024 --optimize_for_size src/main.js",
     "worker-events": "sleep 2 && node --max_old_space_size=1024 --optimize_for_size src/events.js",
-    "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 8000"
+    "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 8000",
+    "scrape": "node src/scraper.js"
   },
   "author": "lza_menace",
   "license": "ISC",
@@ -21,9 +21,9 @@
     "bignumber.js": "^9.0.1",
     "concurrently": "^6.5.0",
     "dotenv": "^10.0.0",
+    "ethers": "^5.6.9",
     "express": "^4.17.1",
     "node-fetch": "^3.2.9",
-    "sqlite3": "^5.0.2",
-    "web3": "^1.6.1"
+    "sqlite3": "^5.0.2"
   }
 }

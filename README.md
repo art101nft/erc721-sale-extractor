@@ -23,6 +23,14 @@ platform    TEXT
 
 It restarts where it stopped, if you want to start from the beginning, change the value of the `REGENERATE_FROM_SCRATCH` constant.
 
+## Sample Txes
+
+Keeping these here for development/testing purposes:
+
+* Multi-collection purchase Opensea Seaport: 0x2f8961209daca23288c499449aa936b54eec5c25720b9d7499a8ee5bde7fcdc7
+* Gem: LooksRare purchase: 0x71e5135a543e17cc91992a2229ae5811461c96b84d5e2560ac8db1dd99bb17e3
+* Gem: X2Y2 + LooksRare purchases: 0x5dc68e0bd60fa671e7b6702002e4ce374de6a5dd49fcda00fdb45e26771bcbd9
+
 ## Setup
 
 ### Secrets
