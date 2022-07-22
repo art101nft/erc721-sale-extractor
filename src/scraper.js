@@ -64,9 +64,10 @@ class Scrape extends Collection {
 
   // continuous scanning loop
   async scrape() {
+    await createDatabaseIfNeeded();
     let latestEthBlock = await this.provider.getBlockNumber();
     let lastScrapedBlock = this.getLastBlock();
-    while (lastScrapedBlock < latestEthBlock) {
+    while (true) {
       const lastRequested = lastScrapedBlock;
 
       await this.filterTransfers(lastScrapedBlock).then(async ev => {
@@ -88,7 +89,7 @@ class Scrape extends Collection {
       while (lastScrapedBlock >= latestEthBlock) {
         latestEthBlock = await this.provider.getBlockNumber();
         console.log(`${this.contractName} - waiting for new blocks. last: ${lastScrapedBlock}`)
-        await this.sleep(30);
+        await sleep(300);
       }
     }
   }
@@ -112,6 +113,20 @@ class Scrape extends Collection {
       this.writeLastBlock(tx.blockNumber);
       let msg = `${this.contractName} - found transfer of token ${tokenId}. ${tx.transactionHash} - ${timestamp.toISOString()}`;
       console.log(msg);
+      const q = {
+        txHash: tx.transactionHash,
+        logIndex: tx.logIndex,
+        contractName: this.contractName,
+        contractAddress: this.contractAddress,
+        eventName: "transfer",
+        eventSource: "contract",
+        sourceOwner: fromAddress,
+        targetOwner: toAddress,
+        tokenId: tokenId,
+        amount: 0,
+        txDate: timestamp
+      }
+      await writeToDatabase(q);
     });
   }
 
@@ -121,7 +136,7 @@ class Scrape extends Collection {
       const receipt = await this.provider.getTransactionReceipt(txHash);
       const timestamp = await this.getBlockTimestamp(receipt.blockNumber);
       // Evaluate each log entry and determine if it's a sale for our contract and use custom logic for each exchange to parse values
-      receipt.logs.map((log) => {
+      receipt.logs.map(async log => {
         let logIndex = log.logIndex;
         let sale = false;
         let platform;
@@ -178,6 +193,20 @@ class Scrape extends Collection {
           amountEther = ethers.utils.formatEther(amountWei);
           let msg = `${this.contractName} - found sale of token ${tokenId} for ${amountEther}Ξ on ${platform}. ${txHash} - ${timestamp.toISOString()}`;
           console.log(msg);
+          const q = {
+            txHash: txHash,
+            logIndex: logIndex,
+            contractName: this.contractName,
+            contractAddress: this.contractAddress,
+            eventName: "sale",
+            eventSource: platform,
+            sourceOwner: fromAddress,
+            targetOwner: toAddress,
+            tokenId: tokenId,
+            amount: amountWei,
+            txDate: timestamp
+          }
+          await writeToDatabase(q);
         }
       });
     } catch(err) {
@@ -185,22 +214,14 @@ class Scrape extends Collection {
     }
   }
 
+  /* Helpers */
+
   // more readable wallet address
   shortenAddress(address) {
     const shortAddress = `${address.slice(0, 5)}...${address.slice(address.length - 4, address.length)}`;
     if (address.startsWith('0x')) return shortAddress;
     return address;
   }
-
-  /* Database */
-
-  // create the db if needed
-
-  // check if db row exists
-
-  // write event to db
-
-  /* Helpers */
 
   // get stored block index to start scraping from
   getLastBlock() {
@@ -219,19 +240,92 @@ class Scrape extends Collection {
     return last;
   }
 
+  // write last block to local filesystem
   writeLastBlock(blockNumber) {
     fs.writeFileSync(this.lastFile, blockNumber.toString());
   }
 
+  // return date object of a given block
   async getBlockTimestamp(blockNumber) {
     const block = await this.provider.getBlock(blockNumber);
     const d = new Date(block.timestamp * 1000);
     return d;
   }
 
-  // sleep
-  async sleep(sec) {
-    return new Promise((resolve) => setTimeout(resolve, Number(sec) * 1000));
+}
+
+async function sleep(sec) {
+  return new Promise((resolve) => setTimeout(resolve, Number(sec) * 1000));
+}
+
+async function createDatabaseIfNeeded() {
+  const tableExists = await new Promise((resolve) => {
+    db.get('SELECT name FROM sqlite_master WHERE type="table" AND name="events"', [], (err, row) => {
+      if (err) {
+        resolve(false);
+      }
+      resolve(row !== undefined);
+    });
+  });
+  if (!tableExists) {
+    db.serialize(() => {
+      console.log('[+] creating table');
+      db.run(
+        `CREATE TABLE events (
+          contract text, event_type text, from_wallet text, to_wallet text,
+          token_id number, amount number, tx_date text, tx text,
+          log_index number, platform text,
+          UNIQUE(tx, log_index)
+        );`,
+      );
+      console.log('[+] creating indexes');
+      db.run('CREATE INDEX idx_type_date ON events(event_type, tx_date);');
+      db.run('CREATE INDEX idx_date ON events(tx_date);');
+      db.run('CREATE INDEX idx_amount ON events(amount);');
+      db.run('CREATE INDEX idx_platform ON events(platform);');
+      db.run('CREATE INDEX idx_contract ON events(contract);');
+      db.run('CREATE INDEX idx_tx ON events(tx);');
+    });
+    console.log('[+] database created');
+  }
+}
+
+async function checkRowExists(txHash, logIndex) {
+  const rowExists = await new Promise((resolve) => {
+    db.get('SELECT * FROM events WHERE tx = ? AND log_index = ?', [txHash, logIndex], (err, row) => {
+      if (err) {
+        resolve(false);
+      }
+      resolve(row !== undefined);
+    });
+  });
+  return rowExists;
+}
+
+async function writeToDatabase(_q) {
+  // txHash, logIndex, contractName, contractAddress, eventName, eventSource, sourceOwner, targetOwner, tokenId, amount, txDate
+  const rowExists = await checkRowExists(_q.txHash, _q.logIndex, _q.contractAddress);
+  if (!rowExists) {
+    let stmt;
+    try {
+      stmt = db.prepare('INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?)');
+      stmt.run(
+        _q.contractAddress,
+        _q.eventName,
+        _q.sourceOwner,
+        _q.targetOwner,
+        _q.tokenId,
+        _q.amount.toString(),
+        _q.txDate.toISOString(),
+        _q.txHash,
+        _q.logIndex,
+        _q.eventSource
+      );
+      stmt.finalize();
+    } catch(err) {
+      console.log(`Error when writing to database: ${err}`);
+      console.log(`Query: ${stmt}`)
+    }
   }
 }
 
