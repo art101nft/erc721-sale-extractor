@@ -1,25 +1,28 @@
-import dotenv from 'dotenv';
-import fs from 'fs';
-import fetch from 'node-fetch';
+const fs = require('fs');
+const { ethers } = require('ethers');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 if (fs.existsSync('.env.local')) {
-  dotenv.config({ path: '.env.local' });
+  require('dotenv').config({path: '.env.local'});
 } else {
-  console.warn('no .env.local find found, using default config');
-  dotenv.config();
+  console.warn('[!] No .env.local found, quitting.');
+  process.exit();
 }
 
 const assetsBase = 'https://art101-assets.s3.us-west-2.amazonaws.com';
 
-export async function postDiscord(contractName, contractAddress, tokenIndex, amountEther, eventSource, fromAddress, toAddress, txHash, timestamp) {
+async function postDiscord(_q) {
   if (process.env.DISCORD_ACTIVE == 0) return
   try {
-    const title = `Sale of token ${tokenIndex} for ${contractName}!`;
-    const desc = `Purchased by ${shortenAddress(toAddress)} at <t:${timestamp}> for ${amountEther}Ξ on ${camelCase(eventSource)}`;
-    const url = `${assetsBase}/${contractAddress}/${tokenIndex.toString()}.json`;
+    const title = `Sale of token ${_q.tokenId} for ${_q.contractName}!`;
+    const desc = `Purchased by ${shortenAddress(_q.targetOwner)} at <t:${Number(_q.txDate.getTime()) / 1000}> for ${ethers.utils.formatEther(_q.amount.toString())}Ξ on ${camelCase(_q.eventSource)}`;
+    const url = `${assetsBase}/${_q.contractAddress}/${_q.tokenId.toString()}.json`;
     const metadata = await fetch(url)
-      .then((r) => r.json());
-    const imageURL = metadata.image.replace('ipfs://', `${assetsBase}/${contractAddress}/`)
+      .then((r) => {
+        console.log(r)
+        return r.json()
+      });
+    const imageURL = metadata.image.replace('ipfs://', `${assetsBase}/${_q.contractAddress}/`)
     const res = await fetch(process.env.DISCORD_WEBHOOK, {
       method: 'POST',
       headers: {
@@ -34,12 +37,11 @@ export async function postDiscord(contractName, contractAddress, tokenIndex, amo
             image: {
               url: imageURL
             },
-            url: `https://etherscan.io/tx/${txHash}`
+            url: `https://etherscan.io/tx/${_q.txHash}`
           }
         ]
       })
     });
-    process.stdout.write('*')
   } catch(err) {
     throw new Error(`[!] Failed to post to Discord: ${err}`);
   }
@@ -54,3 +56,5 @@ function shortenAddress(address) {
   if (address.startsWith('0x')) return shortAddress;
   return address;
 }
+
+module.exports = { postDiscord }

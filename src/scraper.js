@@ -1,6 +1,7 @@
 const { BigNumber, ethers } = require('ethers');
 const fs = require('fs');
 const { Database } = require('sqlite3');
+const { postDiscord } = require('./poster');
 
 
 if (fs.existsSync('.env.local')) {
@@ -206,6 +207,7 @@ class Scrape extends Collection {
             txDate: timestamp
           }
           await writeToDatabase(q);
+          await postDiscord(q);
         }
       });
     } catch(err) {
@@ -214,13 +216,6 @@ class Scrape extends Collection {
   }
 
   /* Helpers */
-
-  // more readable wallet address
-  shortenAddress(address) {
-    const shortAddress = `${address.slice(0, 5)}...${address.slice(address.length - 4, address.length)}`;
-    if (address.startsWith('0x')) return shortAddress;
-    return address;
-  }
 
   // get stored block index to start scraping from
   getLastBlock() {

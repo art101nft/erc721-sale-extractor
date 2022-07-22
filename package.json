@@ -9,7 +9,8 @@
   "scripts": {
     "serve": "node --max_old_space_size=128 --optimize_for_size src/server.js",
     "start": "concurrently npm:scrape npm:serve --restart-tries -1 --restart-after 5000",
-    "scrape": "node src/scraper.js",
+    "stop": "pkill -e -f concurrently && pkill -e -f scrape",
+    "scrape": "node --max_old_space_size=128 --optimize_for_size src/scraper.js",
     "clean": "echo Deleting data in 5 seconds... && sleep 5 && rm storage/*.txt storage/*.db"
   },
   "author": "lza_menace",
