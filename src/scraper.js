@@ -10,6 +10,7 @@ if (fs.existsSync('.env.local')) {
   process.exit();
 }
 
+const CHUNK_SIZE = Number(process.env.CHUNK_SIZE);
 const ALL_CONTRACTS = require('../data/contracts');
 const ERC721_ABI = require('../data/erc721');
 const ERC1155_ABI = require('../data/erc1155');
@@ -23,19 +24,21 @@ const SEAPORT_SALE_TOPIC = '0x9d9af8e38d66c62e2c12f0225249fd9d721c54b83f48d9352c
 const X2Y2_SALE_TOPIC = '0x3cbb63f144840e5b1b0a38a7c19211d2e89de4d7c5faf8b2d3c1776c302d1d33';
 const seaportInterface = new ethers.utils.Interface(SEAPORT_ABI);
 const looksrareInterface = new ethers.utils.Interface(LOOKSRARE_ABI);
+const provider = new ethers.providers.WebSocketProvider(process.env.GETH_NODE);
+const db = new Database('./storage/sqlite.db');
 
 
 class Collection {
   constructor (contractName) {
     if (!(contractName in ALL_CONTRACTS)) {
-      console.warn(`[!] That contract name does not exist in ${process.env.TARGET_CONTRACTS}`);
+      console.warn(`[!] That contract name does not exist in data/contracts.json`);
       process.exit();
     }
     const data = ALL_CONTRACTS[contractName];
     this.contractName = contractName;
     this.contractAddress = data['contract_address'].toLowerCase();
     this.erc1155 = data['erc1155'];
-    this.start_block = data['start_block'];
+    this.startBlock = data['start_block'];
     if (this.erc1155) {
       this.abi = ERC1155_ABI;
     } else {
@@ -51,23 +54,55 @@ class Scrape extends Collection {
   constructor (contractName) {
     super(contractName)
     this.contract = new ethers.Contract(this.contractAddress, this.abi, this.provider);
+    this.lastFile = `./storage/lastBlock.${this.contractName}.txt`;
   }
 
   // ethereum chain provider - geth, infura, alchemy, etc
   getWeb3Provider() {
-      return new ethers.providers.WebSocketProvider(process.env.GETH_NODE);
+    return provider;
   }
 
-  // ethers - query historical logs
-  async filterTransfers() {
+  // continuous scanning loop
+  async scrape() {
+    let latestEthBlock = await this.provider.getBlockNumber();
+    let lastScrapedBlock = this.getLastBlock();
+    while (lastScrapedBlock < latestEthBlock) {
+      const lastRequested = lastScrapedBlock;
+
+      await this.filterTransfers(lastScrapedBlock).then((ev) => {
+        ev.map(tx => tx.transactionHash).filter((tx, i, a) => a.indexOf(tx) === i).map(async txHash => {
+          await this.getSalesEvents(txHash);
+        });
+      })
+
+      if (lastRequested === lastScrapedBlock) {
+        lastScrapedBlock += CHUNK_SIZE;
+        this.writeLastBlock(lastScrapedBlock);
+        if (lastScrapedBlock > latestEthBlock) lastScrapedBlock = latestEthBlock;
+      }
+
+      while (lastScrapedBlock >= latestEthBlock) {
+        latestEthBlock = await this.provider.getBlockNumber();
+        console.log(`${this.contractName} - waiting for new blocks. last: ${lastScrapedBlock}`)
+        await this.sleep(30);
+      }
+    }
+  }
+
+  // query historical logs
+  async filterTransfers(startBlock) {
+    console.log(`${this.contractName} - scraping blocks ${startBlock} - ${startBlock + CHUNK_SIZE}`);
     const transfers = this.contract.filters.Transfer(null, null);
-    let res = await this.contract.queryFilter(transfers, 15179349, 15179555)
+    let res = await this.contract.queryFilter(transfers, startBlock, startBlock + CHUNK_SIZE)
     return res;
   }
 
-  async parseTransferEvents(txHash) {
+  // get sales events from a given transaction
+  async getSalesEvents(txHash) {
     try {
       const receipt = await this.provider.getTransactionReceipt(txHash);
+      const block = await this.provider.getBlock(receipt.blockNumber);
+      const timestamp = new Date(block.timestamp * 1000);
       // Evaluate each log entry and determine if it's a sale for our contract and use custom logic for each exchange to parse values
       receipt.logs.map((log) => {
         let logIndex = log.logIndex;
@@ -86,7 +121,7 @@ class Scrape extends Collection {
           );
           if (matchingOffers.length === 0) return;
           sale = true;
-          platform = 'Opensea';
+          platform = 'opensea';
           fromAddress = logDescription.args.offerer.toLowerCase();
           toAddress = logDescription.args.recipient.toLowerCase();
           tokenId = logDescription.args.offer.map(o => o.identifier.toString());
@@ -122,7 +157,9 @@ class Scrape extends Collection {
           }
         }
         if (sale) {
-          let msg = `[+] Found sale of token ${tokenId} on ${platform}. Seller: ${fromAddress}, Buyer: ${toAddress}. Tx: ${txHash}, idx: ${logIndex}`;
+          this.writeLastBlock(log.blockNumber);
+          amountEther = ethers.utils.formatEther(amountWei);
+          let msg = `${this.contractName} - found sale of token ${tokenId} for ${amountEther}Ξ on ${platform}. ${txHash} - ${timestamp.toISOString()}`;
           console.log(msg);
         }
       });
@@ -149,20 +186,36 @@ class Scrape extends Collection {
   /* Helpers */
 
   // get stored block index to start scraping from
+  getLastBlock() {
+    let last = 0;
+    if (fs.existsSync(this.lastFile)) {
+      // read block stored in lastBlock file
+      last = parseInt(fs.readFileSync(this.lastFile).toString(), 10);
+    } else {
+      // write starting block if lastBlock file doesn't exist
+      fs.writeFileSync(this.lastFile, this.startBlock.toString());
+    };
+    // contract creation
+    if (Number.isNaN(last) || last < this.startBlock) {
+      last = this.startBlock;
+    };
+    return last;
+  }
+
+  writeLastBlock(blockNumber) {
+    fs.writeFileSync(this.lastFile, blockNumber.toString());
+  }
 
   // sleep
+  async sleep(sec) {
+    return new Promise((resolve) => setTimeout(resolve, Number(sec) * 1000));
+  }
 }
 
 let c = new Scrape('rmutt')
-// c.filterTransfers().then((ev) => {
-//   ev.map(tx => tx.transactionHash).filter((tx, i, a) => a.indexOf(tx) === i).map(txHash => {
-//     console.log(`parsing transfer events from ${txHash}`);
-//     c.parseTransferEvents(txHash);
-//   });
-// })
-
+c.scrape()
 // Sample events for testing functionality and detecting sales
-// c.parseTransferEvents('0x2f8961209daca23288c499449aa936b54eec5c25720b9d7499a8ee5bde7fcdc7')
-// c.parseTransferEvents('0xb20853f22b367ee139fd800206bf1cba0c36f1a1dd739630f99cc6ffd0471edc')
-// c.parseTransferEvents('0x71e5135a543e17cc91992a2229ae5811461c96b84d5e2560ac8db1dd99bb17e3')
-// c.parseTransferEvents('0x5dc68e0bd60fa671e7b6702002e4ce374de6a5dd49fcda00fdb45e26771bcbd9')
+// c.getSalesEvents('0x2f8961209daca23288c499449aa936b54eec5c25720b9d7499a8ee5bde7fcdc7')
+// c.getSalesEvents('0xb20853f22b367ee139fd800206bf1cba0c36f1a1dd739630f99cc6ffd0471edc')
+// c.getSalesEvents('0x71e5135a543e17cc91992a2229ae5811461c96b84d5e2560ac8db1dd99bb17e3')
+// c.getSalesEvents('0x5dc68e0bd60fa671e7b6702002e4ce374de6a5dd49fcda00fdb45e26771bcbd9')
