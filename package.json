@@ -11,7 +11,8 @@
     "worker-main": "node --max_old_space_size=1024 --optimize_for_size src/main.js",
     "worker-events": "sleep 2 && node --max_old_space_size=1024 --optimize_for_size src/events.js",
     "start": "concurrently npm:worker* npm:serve --restart-tries -1 --restart-after 8000",
-    "scrape": "node src/scraper.js"
+    "scrape": "node src/scraper.js",
+    "clean": "echo Deleting data in 5 seconds... && sleep 5 && rm storage/*.txt storage/*.db"
   },
   "author": "lza_menace",
   "license": "ISC",
