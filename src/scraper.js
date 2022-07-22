@@ -69,11 +69,15 @@ class Scrape extends Collection {
     while (lastScrapedBlock < latestEthBlock) {
       const lastRequested = lastScrapedBlock;
 
-      await this.filterTransfers(lastScrapedBlock).then((ev) => {
+      await this.filterTransfers(lastScrapedBlock).then(async ev => {
+        // capture transfer events with returned array of Transfers
+        await this.getTransferEvents(ev);
+        // filter down unique transaction hashes
         ev.map(tx => tx.transactionHash).filter((tx, i, a) => a.indexOf(tx) === i).map(async txHash => {
+          // capture sales events for each
           await this.getSalesEvents(txHash);
         });
-      })
+      });
 
       if (lastRequested === lastScrapedBlock) {
         lastScrapedBlock += CHUNK_SIZE;
@@ -97,17 +101,30 @@ class Scrape extends Collection {
     return res;
   }
 
+  // get transfer events from a batch from filtering
+  async getTransferEvents(txEvents) {
+    let platform = 'contract';
+    txEvents.forEach(async tx => {
+      const fromAddress = tx.args.from.toString().toLowerCase();
+      const toAddress = tx.args.to.toString().toLowerCase();
+      const tokenId = tx.args.tokenId.toString();
+      const timestamp = await this.getBlockTimestamp(tx.blockNumber);
+      this.writeLastBlock(tx.blockNumber);
+      let msg = `${this.contractName} - found transfer of token ${tokenId}. ${tx.transactionHash} - ${timestamp.toISOString()}`;
+      console.log(msg);
+    });
+  }
+
   // get sales events from a given transaction
   async getSalesEvents(txHash) {
     try {
       const receipt = await this.provider.getTransactionReceipt(txHash);
-      const block = await this.provider.getBlock(receipt.blockNumber);
-      const timestamp = new Date(block.timestamp * 1000);
+      const timestamp = await this.getBlockTimestamp(receipt.blockNumber);
       // Evaluate each log entry and determine if it's a sale for our contract and use custom logic for each exchange to parse values
       receipt.logs.map((log) => {
         let logIndex = log.logIndex;
-        let platform = 'contract';
         let sale = false;
+        let platform;
         let fromAddress;
         let toAddress;
         let amountWei;
@@ -204,6 +221,12 @@ class Scrape extends Collection {
 
   writeLastBlock(blockNumber) {
     fs.writeFileSync(this.lastFile, blockNumber.toString());
+  }
+
+  async getBlockTimestamp(blockNumber) {
+    const block = await this.provider.getBlock(blockNumber);
+    const d = new Date(block.timestamp * 1000);
+    return d;
   }
 
   // sleep
