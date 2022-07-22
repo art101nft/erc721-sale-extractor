@@ -1,20 +1,18 @@
-import express from 'express';
-// const Database = require('better-sqlite3');
-import Database from 'better-sqlite3';
-import fs from 'fs';
-import dotenv from 'dotenv';
+const express = require('express');
+const Database = require('better-sqlite3');
+const fs = require('fs');
 
 if (fs.existsSync('.env.local')) {
-  dotenv.config({ path: '.env.local' });
+  require('dotenv').config({path: '.env.local'});
 } else {
-  console.warn('no .env.local find found, using default config');
-  dotenv.config();
+  console.warn('[!] No .env.local found, quitting.');
+  process.exit();
 }
 
+const ALL_CONTRACTS = require('../data/contracts');
+const db = new Database('./storage/sqlite.db');
 const app = express();
 const port = process.env.PORT || 3000;
-const db = new Database(process.env.WORK_DIRECTORY + process.env.DATABASE_FILE, { verbose: console.log });
-const contracts = JSON.parse(fs.readFileSync(process.env.TARGET_CONTRACTS).toString())
 
 app.use(express.json());
 
@@ -23,7 +21,7 @@ app.use('/', express.static('public'));
 app.use('/app', express.static('public'));
 
 app.get('/api/contracts', (req, res) => {
-  res.status(200).json(contracts)
+  res.status(200).json(ALL_CONTRACTS)
 })
 
 app.get('/api/:contractAddress/offers', (req, res) => {
