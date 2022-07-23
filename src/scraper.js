@@ -56,9 +56,10 @@ class Scrape extends Collection {
   provider = this.getWeb3Provider();
 
   constructor (contractName) {
-    super(contractName)
+    super(contractName);
     this.contract = new ethers.Contract(this.contractAddress, this.abi, this.provider);
     this.lastFile = `./storage/lastBlock.${this.contractName}.txt`;
+    createDatabaseIfNeeded();
   }
 
   // ethereum chain provider - geth, infura, alchemy, etc
@@ -68,7 +69,6 @@ class Scrape extends Collection {
 
   // continuous scanning loop
   async scrape() {
-    await createDatabaseIfNeeded();
     let latestEthBlock = await this.provider.getBlockNumber();
     let lastScrapedBlock = this.getLastBlock();
     while (true) {
@@ -76,11 +76,21 @@ class Scrape extends Collection {
 
       await this.filterTransfers(lastScrapedBlock).then(async ev => {
         // capture transfer events with returned array of Transfers
-        await this.getTransferEvents(ev);
+        try {
+          await this.getTransferEvents(ev);
+        } catch(err) {
+          console.log(ev)
+          throw new Error(err);
+        }
         // filter down unique transaction hashes
         ev.map(tx => tx.transactionHash).filter((tx, i, a) => a.indexOf(tx) === i).map(async txHash => {
           // capture sales events for each
-          await this.getSalesEvents(txHash);
+          try {
+            await this.getSalesEvents(txHash);
+          } catch(err) {
+            console.log(txHash)
+            throw new Error(err);
+          }
         });
       });
 
@@ -169,18 +179,18 @@ class Scrape extends Collection {
           }
           amountWei = amounts.reduce((previous,current) => previous + current, BigInt(0));
         } else if (log.topics[0].toLowerCase() === WYVERN_SALE_TOPIC.toLowerCase()) {
+          // Handle Opensea/Wyvern sales
           const logDescription = wyvernInterface.parseLog(log);
+          const tokenTransferTopics = receipt.logs.map(l => l).filter(_l =>
+            (_l.address.toLowerCase() == this.contractAddress) &&
+            (_l.topics[0].toLowerCase() == TRANSFER_TOPIC.toLowerCase())
+          ).map(t => t.topics)[0];
           sale = true;
           platform = 'opensea';
-          fromAddress = logDescription.args.maker.toLowerCase();
-          toAddress = logDescription.args.taker.toLowerCase();
+          fromAddress = BigNumber.from(tokenTransferTopics[1])._hex.toString().toLowerCase();
+          toAddress = BigNumber.from(tokenTransferTopics[2])._hex.toString().toLowerCase();
+          tokenId = BigNumber.from(tokenTransferTopics[3]).toString();
           amountWei = BigInt(logDescription.args.price);
-          // have to parse the tokenId from the transfer event, which will be from exactly matching criteria below
-          tokenId = receipt.logs.map(l => l.topics).filter(topics =>
-            (topics[0].toLowerCase() == TRANSFER_TOPIC.toLowerCase()) &&
-            (BigNumber.from(topics[1])._hex.toString().toLowerCase() == fromAddress) &&
-            (BigNumber.from(topics[2])._hex.toString().toLowerCase() == toAddress)
-          ).map(t => BigNumber.from(t[3]));
         } else if (log.topics[0].toLowerCase() === LOOKSRARE_SALE_TOPIC.toLowerCase()) {
           // Handle LooksRare sales
           const logDescription = looksrareInterface.parseLog(log);
@@ -214,7 +224,7 @@ class Scrape extends Collection {
             logIndex: logIndex,
             contractName: this.contractName,
             contractAddress: this.contractAddress,
-            eventName: "sale",
+            eventName: 'sale',
             eventSource: platform,
             sourceOwner: fromAddress,
             targetOwner: toAddress,
@@ -279,7 +289,6 @@ async function createDatabaseIfNeeded() {
   });
   if (!tableExists) {
     db.serialize(() => {
-      console.log('[+] creating table');
       db.run(
         `CREATE TABLE events (
           contract text, event_type text, from_wallet text, to_wallet text,
@@ -288,7 +297,6 @@ async function createDatabaseIfNeeded() {
           UNIQUE(tx, log_index)
         );`,
       );
-      console.log('[+] creating indexes');
       db.run('CREATE INDEX idx_type_date ON events(event_type, tx_date);');
       db.run('CREATE INDEX idx_date ON events(tx_date);');
       db.run('CREATE INDEX idx_amount ON events(amount);');
@@ -296,7 +304,6 @@ async function createDatabaseIfNeeded() {
       db.run('CREATE INDEX idx_contract ON events(contract);');
       db.run('CREATE INDEX idx_tx ON events(tx);');
     });
-    console.log('[+] database created');
   }
 }
 
@@ -357,3 +364,6 @@ for(const key in ALL_CONTRACTS) {
 // c.getSalesEvents('0x975d10cdd873ee5bb29e746c2f1f3b776078cace9c04ce419cb66949239288b5')
 // c.getSalesEvents('0x8d45ed8168a740f8b182ec0dbad1c37d6c6dbd8aa865be408d865ca01fb0fa94')
 // c.getSalesEvents('0x27ab6f12604bf17a9e7c93bf1a7cc466d7dfd922565d267eac10879b59d5d0b5')
+// c.getSalesEvents('0x511bc5cda2b7145511c7b57e29cecf1f15a5a650670f09e91e69fc24824effd9')
+// c.getSalesEvents('0x04746b6ba1269906db8e0932263b86a6fc35a30a31cf73d2b7db078f6f4ed442')
+// c.getSalesEvents('0x24d6523c5048b2df3e7f8b24d63a6644e4c0ed33cfae6396190e3ded5fc79321')
