@@ -102,15 +102,15 @@ class Scrape extends Collection {
 
       while (lastScrapedBlock >= latestEthBlock) {
         latestEthBlock = await this.provider.getBlockNumber();
-        console.log(`${this.contractName} - waiting for new blocks. last: ${lastScrapedBlock}`)
-        await sleep(300);
+        console.log(`[ ${(new Date()).toISOString()} ][ ${this.contractName} ] [ waiting ]\n`)
+        await sleep(120);
       }
     }
   }
 
   // query historical logs
   async filterTransfers(startBlock) {
-    console.log(`${this.contractName} - scraping blocks ${startBlock} - ${startBlock + CHUNK_SIZE}`);
+    console.log(`[ ${(new Date()).toISOString()} ][ ${this.contractName} ][ scraping ] blocks ${startBlock} - ${startBlock + CHUNK_SIZE}\n`);
     const transfers = this.contract.filters.Transfer(null, null);
     let res = await this.contract.queryFilter(transfers, startBlock, startBlock + CHUNK_SIZE)
     return res;
@@ -125,7 +125,7 @@ class Scrape extends Collection {
       const tokenId = tx.args.tokenId.toString();
       const timestamp = await this.getBlockTimestamp(tx.blockNumber);
       this.writeLastBlock(tx.blockNumber);
-      let msg = `${this.contractName} - found transfer of token ${tokenId} from ${fromAddress} to ${toAddress}. ${tx.transactionHash}:${tx.logIndex} - ${timestamp.toISOString()}`;
+      let msg = `[ ${timestamp.toISOString()} ][ ${this.contractName} ][ transfer ] #${tokenId}: ${fromAddress} => ${toAddress} in tx ${tx.transactionHash}:${tx.logIndex}\n`;
       console.log(msg);
       const q = {
         txHash: tx.transactionHash,
@@ -217,7 +217,7 @@ class Scrape extends Collection {
         }
         if (sale) {
           amountEther = ethers.utils.formatEther(amountWei);
-          let msg = `${this.contractName} - found sale of token ${tokenId} for ${amountEther}Ξ on ${platform}. ${txHash}:${logIndex} - ${timestamp.toISOString()}`;
+          let msg = `[ ${timestamp.toISOString()} ][ ${this.contractName} ][ sale ] #${tokenId}: ${fromAddress} => ${toAddress} for ${amountEther}Ξ (${platform}) in tx ${txHash}:${logIndex}\n`;
           console.log(msg);
           const q = {
             txHash: txHash,
