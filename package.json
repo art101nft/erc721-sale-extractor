@@ -11,7 +11,8 @@
     "start": "concurrently npm:scrape npm:serve --restart-tries -1 --restart-after 5000",
     "stop": "pkill -e -f concurrently && pkill -e -f scrape",
     "scrape": "node --max_old_space_size=128 --optimize_for_size src/scraper.js",
-    "clean": "echo Deleting data in 5 seconds... && sleep 5 && rm storage/*.txt storage/*.db"
+    "resync": "echo Deleting data in 5 seconds... && sleep 5 && rm storage/*.txt",
+    "wipe": "echo Deleting data in 5 seconds... && sleep 5 && npm run resync && storage/*.db"
   },
   "author": "lza_menace",
   "license": "ISC",
