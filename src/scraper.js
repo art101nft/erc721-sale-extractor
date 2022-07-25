@@ -21,6 +21,7 @@ const WYVERN_ABI = require('../data/wyvern');
 const LOOKSRARE_ABI = require('../data/looksrare');
 const WETH_ADDRESS = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const TRANSFER_SINGLE_TOPIC = '0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62';
 const LOOKSRARE_SALE_TOPIC = '0x95fb6205e23ff6bda16a2d1dba56b9ad7c783f67c96fa149785052f47696f2be';
 const SEAPORT_SALE_TOPIC = '0x9d9af8e38d66c62e2c12f0225249fd9d721c54b83f48d9352c97c6cacdcb6f31';
 const WYVERN_SALE_TOPIC = '0xc4109843e0b7d514e4c093114b863f8e7d8d9a458c372cd51bfe526b588006c9'
@@ -45,9 +46,12 @@ class Collection {
     this.startBlock = data['start_block'];
     if (this.erc1155) {
       this.abi = ERC1155_ABI;
+      this.transferEvent = 'TransferSingle';
     } else {
       this.abi = ERC721_ABI;
+      this.transferEvent = 'Transfer';
     }
+    this.interface = new ethers.utils.Interface(this.abi);
   }
 }
 
@@ -110,8 +114,13 @@ class Scrape extends Collection {
 
   // query historical logs
   async filterTransfers(startBlock) {
+    let transfers;
     console.log(`[ ${(new Date()).toISOString()} ][ ${this.contractName} ][ scraping ] blocks ${startBlock} - ${startBlock + CHUNK_SIZE}\n`);
-    const transfers = this.contract.filters.Transfer(null, null);
+    if (this.erc1155) {
+      transfers = this.contract.filters.TransferSingle(null, null);
+    } else {
+      transfers = this.contract.filters.Transfer(null, null);
+    }
     let res = await this.contract.queryFilter(transfers, startBlock, startBlock + CHUNK_SIZE)
     return res;
   }
@@ -120,11 +129,15 @@ class Scrape extends Collection {
   async getTransferEvents(txEvents) {
     let platform = 'contract';
     txEvents.forEach(async tx => {
+      let tokenId;
+      if (this.erc1155) {
+        tokenId = tx.args.id.toString();
+      } else {
+        tokenId = tx.args.tokenId.toString();
+      }
       const fromAddress = tx.args.from.toString().toLowerCase();
       const toAddress = tx.args.to.toString().toLowerCase();
-      const tokenId = tx.args.tokenId.toString();
       const timestamp = await this.getBlockTimestamp(tx.blockNumber);
-      this.writeLastBlock(tx.blockNumber);
       let msg = `[ ${timestamp.toISOString()} ][ ${this.contractName} ][ transfer ] #${tokenId}: ${fromAddress} => ${toAddress} in tx ${tx.transactionHash}:${tx.logIndex}\n`;
       console.log(msg);
       const q = {
@@ -140,7 +153,9 @@ class Scrape extends Collection {
         amount: 0,
         txDate: timestamp
       }
-      await writeToDatabase(q);
+      writeToDatabase(q)
+        .then((res) => this.writeLastBlock(tx.blockNumber))
+        .catch((err) => console.log(`Error writing to database: ${err}`));
     });
   }
 
@@ -181,15 +196,23 @@ class Scrape extends Collection {
         } else if (log.topics[0].toLowerCase() === WYVERN_SALE_TOPIC.toLowerCase()) {
           // Handle Opensea/Wyvern sales
           const logDescription = wyvernInterface.parseLog(log);
-          const tokenTransferTopics = receipt.logs.map(l => l).filter(_l =>
-            (_l.address.toLowerCase() == this.contractAddress) &&
-            (_l.topics[0].toLowerCase() == TRANSFER_TOPIC.toLowerCase())
-          ).map(t => t.topics)[0];
           sale = true;
           platform = 'opensea';
-          fromAddress = BigNumber.from(tokenTransferTopics[1])._hex.toString().toLowerCase();
-          toAddress = BigNumber.from(tokenTransferTopics[2])._hex.toString().toLowerCase();
-          tokenId = BigNumber.from(tokenTransferTopics[3]).toString();
+          if (this.erc1155) {
+            const txLog = receipt.logs.map(l => l).filter(_l =>
+              (_l.topics[0].toLowerCase() == TRANSFER_SINGLE_TOPIC.toLowerCase())
+            ).map(t => this.interface.parseLog(t))[0].args;
+            fromAddress = txLog.from.toLowerCase();
+            toAddress = txLog.to.toLowerCase();
+            tokenId = BigNumber.from(txLog.id).toString();
+          } else {
+            const txLog = receipt.logs.map(l => l).filter(_l =>
+              (_l.topics[0].toLowerCase() == TRANSFER_TOPIC.toLowerCase())
+            ).map(t => this.interface.parseLog(t))[0].args;
+            fromAddress = txLog.from.toLowerCase();
+            toAddress = txLog.to.toLowerCase();
+            tokenId = BigNumber.from(txLog.tokenId).toString();
+          }
           amountWei = BigInt(logDescription.args.price);
         } else if (log.topics[0].toLowerCase() === LOOKSRARE_SALE_TOPIC.toLowerCase()) {
           // Handle LooksRare sales
@@ -232,7 +255,9 @@ class Scrape extends Collection {
             amount: amountWei,
             txDate: timestamp
           }
-          await writeToDatabase(q);
+          writeToDatabase(q)
+            .then((res) => this.writeLastBlock(log.blockNumber))
+            .catch((err) => console.log(`Error writing to database: ${err}`));
           await postDiscord(q);
         }
       });
@@ -339,24 +364,18 @@ async function writeToDatabase(_q) {
         _q.eventSource
       );
       stmt.finalize();
+      return true;
     } catch(err) {
       console.log(`Error when writing to database: ${err}`);
-      console.log(`Query: ${stmt}`)
+      console.log(`Query: ${stmt}`);
+      return false;
     }
   }
+  return true;
 }
-
-// Scrape all collections
-for(const key in ALL_CONTRACTS) {
-  const c = new Scrape(key);
-  c.scrape();
-}
-
-// Testing just one collection
-// let c = new Scrape('non-fungible-soup')
-// c.scrape()
 
 // Sample events for testing functionality and detecting sales
+// let c = new Scrape('non-fungible-soup');
 // c.getSalesEvents('0x2f8961209daca23288c499449aa936b54eec5c25720b9d7499a8ee5bde7fcdc7')
 // c.getSalesEvents('0xb20853f22b367ee139fd800206bf1cba0c36f1a1dd739630f99cc6ffd0471edc')
 // c.getSalesEvents('0x71e5135a543e17cc91992a2229ae5811461c96b84d5e2560ac8db1dd99bb17e3')
@@ -367,3 +386,15 @@ for(const key in ALL_CONTRACTS) {
 // c.getSalesEvents('0x511bc5cda2b7145511c7b57e29cecf1f15a5a650670f09e91e69fc24824effd9')
 // c.getSalesEvents('0x04746b6ba1269906db8e0932263b86a6fc35a30a31cf73d2b7db078f6f4ed442')
 // c.getSalesEvents('0x24d6523c5048b2df3e7f8b24d63a6644e4c0ed33cfae6396190e3ded5fc79321')
+// c.getSalesEvents('0xe56dc64c44a3cbfe3a1e68f8669a65f17ebe48d64e944673122a565b7c641d1e')
+// return
+
+if (process.env.SCRAPE) {
+  let c = new Scrape(process.env.SCRAPE)
+  c.scrape()
+} else {
+  for(const key in ALL_CONTRACTS) {
+    const c = new Scrape(key);
+    c.scrape();
+  }
+}
