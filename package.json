@@ -17,7 +17,6 @@
   "author": "lza_menace",
   "license": "ISC",
   "dependencies": {
-    "@types/util.promisify": "^1.0.4",
     "better-sqlite3": "^7.4.5",
     "bignumber.js": "^9.0.1",
     "concurrently": "^6.5.0",

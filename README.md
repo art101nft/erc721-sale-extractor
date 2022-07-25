@@ -1,10 +1,18 @@
-# ERC-721/1155 Sales Extractor
+# NFT Sales Scraper
 
-This repo contains TypeScript code to scrape the Ethereum chain for sales for any number of ERC-721 or ERC-1155 compliant tokens. It was graciously developed by [@tat2bu](https://twitter.com/tat2bu) for the CryptoPhunks project and their [marketplace site](https://notlarvalabs.com/cryptophunks) and forked/modified by [@lza_menace](https://twitter.com/lza_menace) to support multiple collections.
+This repo contains JavaScript code to scrape the Ethereum chain for sales for any number of ERC-721 or ERC-1155 compliant tokens. It also provides a simple website and API for visualizing sales and querying information across contracts and tokens, as well as posts notifications to Discord (and eventually Twitter).
 
-The `main.ts` script scrapes the blockchain data and extracts structured information about sales of one or more contracts as defined in [data/contracts.json](data/contracts.json.sample) into a SQLite database. It currently supports Opensea, LooksRare, Cargo, Rarible, and NFTX sales.
+## How It Works
 
-The extracted data is structured the following way in the generated sqlite3 database:
+`scraper.js` parses a list of contracts in [data/contracts.json](data/contracts.json.sample) with some user provided metadata (if ERC-1155, contract deployed block, contract address, etc) and begins an asynchronous loop to start scraping the chain at the last checked block. The script contains topic strings for relevant transfer events for ERC-721 and ERC-1155, as well as sales events from OpenSea (Wyvern and Seaport), LooksRare, and X2Y2 exchange contracts.
+
+When the script finds a transfer event it stores the relevant transfer data (from, to, txHash, log index, contract, etc) in a SQLite database, in addition, it checks the transaction in which a transfer event occurred and parses the event logs for any sales that may have taken place.
+
+A record of the block numbers checked is stored locally in `./storage` so that scanning resumes
+
+## Data
+
+The extracted data is structured the following way in the SQLite database:
 
 ```
 ------------------
@@ -21,25 +29,15 @@ tx          TEXT
 platform    TEXT
 ```
 
-It restarts where it stopped, if you want to start from the beginning, change the value of the `REGENERATE_FROM_SCRATCH` constant.
-
-## Sample Txes
-
-Keeping these here for development/testing purposes:
-
-* Multi-collection purchase Opensea Seaport: 0x2f8961209daca23288c499449aa936b54eec5c25720b9d7499a8ee5bde7fcdc7
-* Gem: LooksRare purchase: 0x71e5135a543e17cc91992a2229ae5811461c96b84d5e2560ac8db1dd99bb17e3
-* Gem: X2Y2 + LooksRare purchases: 0x5dc68e0bd60fa671e7b6702002e4ce374de6a5dd49fcda00fdb45e26771bcbd9
-
 ## Setup
 
 ### Secrets
 
-Copy the `.env` file to `.env.local` to setup your local configuration, you'll need a geth node (Infura and Alchemy provide this with good free tiers). Then start the scraper using `ts-node`: `npx ts-node src/main.ts` or `npm run worker-main`.
+Copy the `.env` file to `.env.local` to setup your local configuration, you'll need a geth node (Infura and Alchemy provide this with good free tiers). You can optionally provide a Discord webhook URL and turn on Discord posting.
 
 ### Contracts
 
-Copy the `data/contracts.json.sample` file to `data/contracts.json` and modify it for the contracts you want to scrape. Be sure to define if the contract is ERC-721 or ERC-1155 to use the proper ABI and event source.
+Copy `data/contracts.json.sample` to `data/contracts.json` and modify it for the contracts you want to scrape. Be sure to define if the contract is ERC-721 or ERC-1155 to use the proper ABI and event source. Check Etherscan or some transaction explorer to get the block number in which the contract was deployed so your scraping can start at the beginning of that contract's existence.
 
 ## API
 
@@ -53,17 +51,3 @@ An API that serves the scraped data is implemented in the `src/server.js` file, 
 You can start it using `npm run serve` or `npm start`, the latter of which will concurrently start the scraping processes as well as the web server.
 
 The root of the web service is a simple representation of the sales events using [chart.js](https://chartjs.org/) and the above API.
-
-## Docker
-
-A Dockerfile is provided. You can override the `.env` environment variables to configure the container. The simplest startup options are shown below:
-
-```
-docker build -t sales-events-scraper .
-docker run -it -e WORK_DIRECTORY=/app/work/ -v /tmp/work:/app/work -p 3000:3000 sales-events-scraper
-```
-
-## Todo
-
-- Better code structure using callbacks, so this could be used for other purposes (like a sales bot)
-- Extract specific traits from the tokens into the database and index them.
